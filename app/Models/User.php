@@ -34,7 +34,8 @@ class User extends Authenticatable
         'password',
         'remember_token',
     ];
-   
+   protected $primaryKey='user_id';
+//    protected $incrementing =true ;
     /**
      * Get the attributes that should be cast.
      *
