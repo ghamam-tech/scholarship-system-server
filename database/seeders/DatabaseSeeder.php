@@ -2,23 +2,22 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+// ⬇️ imports go HERE (top of file, after namespace)
+use App\Models\User;
+use App\Enums\UserRole;
 
 class DatabaseSeeder extends Seeder
 {
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
-            
-            'email' => 'test@example.com',
-            'password'=>'123456789'
-        ]);
+        // Create ONE admin user (idempotent)
+        User::updateOrCreate(
+            ['email' => 'admin@irfad.com'],
+            [
+                'password' => 'Admin@12345',         // auto-hashed if you have 'password' => 'hashed' cast
+                'role'     => UserRole::ADMIN->value // or just 'admin' if you aren't using the enum
+            ]
+        );
     }
 }

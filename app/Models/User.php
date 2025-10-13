@@ -24,7 +24,7 @@ class User extends Authenticatable
         'password',
         'role'
     ];
-    
+
     /**
      * The attributes that should be hidden for serialization.
      *
@@ -34,17 +34,27 @@ class User extends Authenticatable
         'password',
         'remember_token',
     ];
-   protected $primaryKey='user_id';
-//    protected $incrementing =true ;
+    protected $primaryKey = 'user_id';
+    //    protected $incrementing =true ;
     /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
      */
+
+    public function sponsor()
+    {
+        return $this->hasOne(\App\Models\Sponsor::class, 'user_id', 'user_id');
+    }
+    public function applicant()
+    {
+        return $this->hasOne(\App\Models\Applicant::class, 'user_id', 'user_id');
+    }
+
     protected function casts(): array
     {
         return [
-            'role'=>UserRole::class,
+            'role' => UserRole::class,
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
