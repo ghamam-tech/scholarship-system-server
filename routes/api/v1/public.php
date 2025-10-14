@@ -1,18 +1,10 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\ApplicantController;
-use App\Http\Controllers\UserController;
 
-// Public routes
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/applicant/register', [ApplicantController::class, 'register']);
-
-// Authenticated routes
-Route::post('/logout', [AuthController::class, 'logout']);
-Route::get('/me', [AuthController::class, 'me']);
-
-// User profile management
-Route::get('/profile', [UserController::class, 'profile']);
-Route::put('/profile', [UserController::class, 'updateProfile']);
+// Include separate endpoint files for better organization
+require_once __DIR__ . '/auth/login.php';
+require_once __DIR__ . '/applicant/register.php';
+require_once __DIR__ . '/auth/logout.php';
+require_once __DIR__ . '/auth/me.php';
+require_once __DIR__ . '/user/profile.php';
