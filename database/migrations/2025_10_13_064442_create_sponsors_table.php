@@ -14,10 +14,9 @@ return new class extends Migration
         Schema::create('sponsors', function (Blueprint $table) {
             $table->id('sponsor_id');
             $table->string('name');
-            $table->string('country');
+            $table->string('country')->nullable();
             $table->boolean('is_active')->default(true);
-            $table->foreignId('user_id')->references('user_id') // your users table PK
-                ->on('users')->cascadeOnDelete()->cascadeOnUpdate()->unique();
+            $table->foreignId('user_id')->unique()->constrained('users', 'user_id')->onDelete('cascade');
             $table->timestamps();
         });
     }

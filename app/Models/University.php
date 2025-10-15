@@ -3,27 +3,31 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class University extends Model
 {
     protected $primaryKey = 'university_id';
-    public $incrementing = true;
-    protected $keyType = 'int';
-
-    protected $fillable = [
-        'university_name',
-        'city',
-        'is_active',
-        'country_id'
-    ];
-
+    protected $fillable = ['country_id', 'university_name', 'city', 'is_active'];
+    
     protected $casts = [
-        'is_active' => 'boolean',
+        'is_active' => 'boolean'
     ];
 
-    public function country(): BelongsTo
+    public function country()
     {
         return $this->belongsTo(Country::class, 'country_id', 'country_id');
+    }
+
+    // Many-to-many relationship with scholarships - UPDATED TABLE NAME
+    public function scholarships()
+    {
+        return $this->belongsToMany(
+            Scholarship::class,
+            'university_scholarship', // Changed to match your table name
+            'university_id',
+            'scholarship_id',
+            'university_id',
+            'scholarship_id'
+        );
     }
 }

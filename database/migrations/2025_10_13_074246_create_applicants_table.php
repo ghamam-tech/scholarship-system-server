@@ -14,43 +14,40 @@ return new class extends Migration
         Schema::create('applicants', function (Blueprint $table) {
             $table->engine = 'InnoDB';
 
-            // Primary key
+            // Primary Key
             $table->id('applicant_id');
 
-            // Names
-            $table->string('ar_name');
-            $table->string('en_name');
-
-            // Personal info
+            // Personal Details (nullable for registration)
+            $table->string('ar_name')->nullable();
+            $table->string('en_name')->nullable();
             $table->string('nationality')->nullable();
             $table->string('gender', 10)->nullable();
             $table->string('place_of_birth')->nullable();
             $table->string('phone', 20)->nullable();
-
-            // Passport
             $table->string('passport_number')->nullable();
             $table->date('date_of_birth')->nullable();
 
-            // Parent contact
+            // Parent Contact (nullable)
             $table->string('parent_contact_name')->nullable();
             $table->string('parent_contact_phone', 20)->nullable();
 
-            // Residence and documents
+            // Residence (nullable)
             $table->string('residence_country')->nullable();
-            $table->string('passport_copy_url')->nullable();
-            $table->string('volunteering_certificate_url')->nullable();
 
-            // Language and study info
-            $table->string('language', 50)->nullable();
+            // Document URLs (S3) - already nullable
+            $table->string('passport_copy_img')->nullable();
+            $table->string('volunteering_certificate_file')->nullable();
+
+            // Language (nullable)
+            $table->string('language')->nullable();
+
+            // Education
             $table->boolean('is_studied_in_saudi')->default(false);
+            $table->string('tahsili_file')->nullable(); // S3 URL
+            $table->string('qudorat_file')->nullable(); // S3 URL
 
-            // Foreign key to users table
-            $table->unsignedBigInteger('user_id')->unique();
-            $table->foreign('user_id')
-                  ->references('user_id') // your users table PK
-                  ->on('users')
-                  ->onUpdate('cascade')
-                  ->onDelete('cascade');
+            // Foreign Key to users table
+            $table->foreignId('user_id')->unique()->constrained('users', 'user_id')->onDelete('cascade');
 
             $table->timestamps();
         });

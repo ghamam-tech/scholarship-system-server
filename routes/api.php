@@ -1,24 +1,24 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-/*
-|--------------------------------------------------------------------------
-| API Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register API routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "api" middleware group. Make something great!
-|
-*/
+Route::prefix('v1')->name('api.v1.')->group(function () {
+    // Load every file under routes/api/v1/*.php
+    foreach (glob(base_path('routes/api/v1/*.php')) as $file) {
+        require $file;
+    }
 
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
-});
+    // Health check
+    Route::get('health', fn () => response()->json([
+        'app' => config('app.name'),
+        'version' => 'v1',
+        'status' => 'ok',
+    ]));
 
-// API v1 routes with /v1 prefix
-Route::prefix('v1')->group(function () {
-    require_once __DIR__ . '/api/v1/index.php';
+    // API fallback (404 JSON for unknown /api/v1/* routes)
+    Route::fallback(function () {
+        return response()->json([
+            'message' => 'Not Found',
+        ], 404);
+    });
 });

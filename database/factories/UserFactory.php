@@ -2,8 +2,9 @@
 
 namespace Database\Factories;
 
+use App\Models\User;
+use App\Enums\UserRole;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 /**
@@ -24,10 +25,10 @@ class UserFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
+            'role' => fake()->randomElement([UserRole::APPLICANT->value, UserRole::SPONSOR->value, UserRole::ADMIN->value]),
             'remember_token' => Str::random(10),
         ];
     }
@@ -37,8 +38,38 @@ class UserFactory extends Factory
      */
     public function unverified(): static
     {
-        return $this->state(fn (array $attributes) => [
+        return $this->state(fn(array $attributes) => [
             'email_verified_at' => null,
+        ]);
+    }
+
+    /**
+     * Create an applicant user
+     */
+    public function applicant(): static
+    {
+        return $this->state(fn(array $attributes) => [
+            'role' => UserRole::APPLICANT->value,
+        ]);
+    }
+
+    /**
+     * Create a sponsor user
+     */
+    public function sponsor(): static
+    {
+        return $this->state(fn(array $attributes) => [
+            'role' => UserRole::SPONSOR->value,
+        ]);
+    }
+
+    /**
+     * Create an admin user
+     */
+    public function admin(): static
+    {
+        return $this->state(fn(array $attributes) => [
+            'role' => UserRole::ADMIN->value,
         ]);
     }
 }

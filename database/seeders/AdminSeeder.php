@@ -18,7 +18,7 @@ class AdminSeeder extends Seeder
         $user = User::create([
             'email' => 'admin@test.com',
             'password' => 'password123',
-            'role' => UserRole::ADMIN
+            'role' => UserRole::ADMIN->value
         ]);
 
         // Create admin profile

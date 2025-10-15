@@ -3,26 +3,31 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Country extends Model
 {
     protected $primaryKey = 'country_id';
-    public $incrementing = true;
-    protected $keyType = 'int';
-
-    protected $fillable = [
-        'country_name',
-        'country_code',
-        'is_active'
-    ];
-
+    protected $fillable = ['country_name', 'country_code', 'is_active'];
+    
     protected $casts = [
-        'is_active' => 'boolean',
+        'is_active' => 'boolean'
     ];
 
-    public function universities(): HasMany
+    public function universities()
     {
         return $this->hasMany(University::class, 'country_id', 'country_id');
+    }
+
+    // Many-to-many relationship with scholarships
+    public function scholarships()
+    {
+        return $this->belongsToMany(
+            Scholarship::class,
+            'country_scholarship', 
+            'country_id',
+            'scholarship_id',
+            'country_id',
+            'scholarship_id'
+        );
     }
 }
