@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 class Scholarship extends Model
 {
     protected $primaryKey = 'scholarship_id';
+    
     protected $fillable = [
         'scholarship_name',
         'scholarship_type',
-        'allowed_program', 
+        'allowed_program',
         'total_beneficiaries',
         'opening_date',
         'closing_date',
@@ -19,12 +20,13 @@ class Scholarship extends Model
         'is_hided',
         'sponsor_id'
     ];
-    
+
     protected $casts = [
         'is_active' => 'boolean',
         'is_hided' => 'boolean',
         'opening_date' => 'date',
-        'closing_date' => 'date'
+        'closing_date' => 'date',
+        'total_beneficiaries' => 'integer'
     ];
 
     public function sponsor()
@@ -37,7 +39,7 @@ class Scholarship extends Model
     {
         return $this->belongsToMany(
             Country::class,
-            'country_scholarship', // Make sure this matches your table name
+            'country_scholarship',
             'scholarship_id',
             'country_id',
             'scholarship_id',
@@ -45,16 +47,36 @@ class Scholarship extends Model
         );
     }
 
-    // Many-to-many relationship with universities - UPDATED TABLE NAME
+    // Many-to-many relationship with universities
     public function universities()
     {
         return $this->belongsToMany(
             University::class,
-            'university_scholarship', // Changed to match your table name
+            'university_scholarship',
             'scholarship_id',
             'university_id',
             'scholarship_id',
             'university_id'
         );
+    }
+
+    // Scope for visible scholarships (for students/applicants)
+    public function scopeVisible($query)
+    {
+        return $query->where('is_active', true)
+                    ->where('is_hided', false)
+                    ->where('closing_date', '>', now());
+    }
+
+    // Scope for admin view (shows all scholarships)
+    public function scopeForAdmin($query)
+    {
+        return $query; // No filters for admin
+    }
+
+    // Check if scholarship is visible to public
+    public function isVisible()
+    {
+        return $this->is_active && !$this->is_hided && $this->closing_date > now();
     }
 }

@@ -3,16 +3,35 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ScholarshipController;
 
-// Public routes - anyone can view active scholarships
+/*
+|--------------------------------------------------------------------------
+| Scholarship Routes
+|--------------------------------------------------------------------------
+|
+| Public routes: Anyone can view active, non-hidden scholarships
+| Admin routes: Only authenticated admins can perform CRUD operations
+|
+*/
+
+// Public routes - anyone can view active, non-hidden scholarships
+// These routes work for both authenticated and unauthenticated users
 Route::get('scholarships', [ScholarshipController::class, 'index']);
 Route::get('scholarships/{scholarship}', [ScholarshipController::class, 'show']);
 
-// Get universities by countries (for frontend)
+// Helper route for frontend - get universities by countries
 Route::get('scholarships/universities/by-countries', [ScholarshipController::class, 'getUniversitiesByCountries']);
 
-// Admin-only routes
+// Admin-only routes - require authentication and admin role
 Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
+    // Admin can view ALL scholarships (including expired/hidden ones)
+    Route::get('scholarships/admin/all', [ScholarshipController::class, 'adminIndex']);
+    Route::get('scholarships/{scholarship}/admin', [ScholarshipController::class, 'adminShow']);
+
+    // CRUD operations for scholarships
     Route::post('scholarships', [ScholarshipController::class, 'store']);
     Route::match(['put', 'patch'], 'scholarships/{scholarship}', [ScholarshipController::class, 'update']);
     Route::delete('scholarships/{scholarship}', [ScholarshipController::class, 'destroy']);
+
+    // Debug route for testing authentication
+    Route::get('scholarships/debug/user', [ScholarshipController::class, 'debugUser']);
 });

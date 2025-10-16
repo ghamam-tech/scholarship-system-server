@@ -7,39 +7,70 @@ use App\Models\Country;
 use App\Models\University;
 use App\Enums\UserRole;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Auth;
 
 class ScholarshipController extends Controller
 {
     public function index(Request $request)
     {
         $user = $request->user();
-        
-        $isAdmin = $user && (
-            ($user->role instanceof UserRole && $user->role === UserRole::ADMIN) ||
-            ($user->role === UserRole::ADMIN->value)
-        );
+
+        // Check if user is admin
+        $isAdmin = $user && $user->role === UserRole::ADMIN;
 
         $query = Scholarship::with(['sponsor', 'countries', 'universities']);
 
         if (!$isAdmin) {
+            // Non-admin users (including unauthorized users) only see active, non-hidden scholarships
             $query->where('is_active', true)
-                  ->where('is_hided', false);
+                ->where('is_hided', false)
+                ->where('closing_date', '>', now()); // Only show scholarships that haven't closed yet
+        }
+        // Admin users: NO filters applied - they see ALL scholarships
+
+        $scholarships = $query->orderBy('created_at', 'desc')->get();
+
+        return response()->json([
+            'data' => $scholarships,
+            'meta' => [
+                'total' => $scholarships->count(),
+                'user_role' => $user ? $user->role->value : 'guest',
+                'is_admin' => $isAdmin,
+                'user_id' => $user ? $user->user_id : null,
+                'filters_applied' => !$isAdmin ? ['is_active=true', 'is_hided=false', 'closing_date>now'] : []
+            ]
+        ]);
+    }
+
+    public function show(Request $request, Scholarship $scholarship)
+    {
+        $user = $request->user();
+
+        // Check if user is admin
+        $isAdmin = $user && $user->role === UserRole::ADMIN;
+
+        // Admin can see ANY scholarship, non-admin only active & non-hidden & not closed
+        if (!$isAdmin && (!$scholarship->is_active || $scholarship->is_hided || $scholarship->closing_date <= now())) {
+            return response()->json(['message' => 'Scholarship not available'], 404);
         }
 
-        $scholarships = $query->get();
-        return response()->json($scholarships);
+        $scholarship->load(['sponsor', 'countries', 'universities']);
+        return response()->json([
+            'data' => $scholarship,
+            'meta' => [
+                'user_role' => $user ? $user->role->value : 'guest',
+                'is_admin' => $isAdmin,
+                'user_id' => $user ? $user->user_id : null
+            ]
+        ]);
     }
 
     public function store(Request $request)
     {
         $user = $request->user();
-        $isAdmin = $user && (
-            ($user->role instanceof UserRole && $user->role === UserRole::ADMIN) ||
-            ($user->role === UserRole::ADMIN->value)
-        );
 
-        if (!$isAdmin) {
+        // Check if user is admin
+        if (!$user || $user->role !== UserRole::ADMIN) {
             return response()->json(['message' => 'Only admins can create scholarships'], 403);
         }
 
@@ -60,7 +91,7 @@ class ScholarshipController extends Controller
             'university_ids.*' => ['exists:universities,university_id']
         ]);
 
-        // Validate that selected universities belong to selected countries
+        // Validate university-country relationships
         if ($request->has('university_ids') && !empty($data['university_ids'])) {
             $validUniversities = University::whereIn('country_id', $data['country_ids'])
                 ->whereIn('university_id', $data['university_ids'])
@@ -69,20 +100,16 @@ class ScholarshipController extends Controller
 
             if (count($data['university_ids']) !== count($validUniversities)) {
                 return response()->json([
-                    'message' => 'Some selected universities do not belong to the selected countries',
-                    'errors' => [
-                        'university_ids' => ['Invalid university selection for the chosen countries']
-                    ]
+                    'message' => 'Some selected universities do not belong to the selected countries'
                 ], 422);
             }
         }
 
         $scholarship = Scholarship::create($data);
-        
-        // Attach countries to scholarship
+
+        // Attach relationships
         $scholarship->countries()->attach($data['country_ids']);
 
-        // Attach universities to scholarship if provided
         if ($request->has('university_ids') && !empty($data['university_ids'])) {
             $scholarship->universities()->attach($data['university_ids']);
         }
@@ -91,35 +118,15 @@ class ScholarshipController extends Controller
 
         return response()->json([
             'message' => 'Scholarship created successfully',
-            'scholarship' => $scholarship,
+            'data' => $scholarship,
         ], 201);
-    }
-
-    public function show(Request $request, Scholarship $scholarship)
-    {
-        $user = $request->user();
-        $isAdmin = $user && (
-            ($user->role instanceof UserRole && $user->role === UserRole::ADMIN) ||
-            ($user->role === UserRole::ADMIN->value)
-        );
-
-        if ((!$scholarship->is_active || $scholarship->is_hided) && !$isAdmin) {
-            return response()->json(['message' => 'Scholarship not available'], 404);
-        }
-
-        $scholarship->load(['sponsor', 'countries', 'universities']);
-        return response()->json($scholarship);
     }
 
     public function update(Request $request, Scholarship $scholarship)
     {
         $user = $request->user();
-        $isAdmin = $user && (
-            ($user->role instanceof UserRole && $user->role === UserRole::ADMIN) ||
-            ($user->role === UserRole::ADMIN->value)
-        );
 
-        if (!$isAdmin) {
+        if (!$user || $user->role !== UserRole::ADMIN) {
             return response()->json(['message' => 'Only admins can update scholarships'], 403);
         }
 
@@ -140,31 +147,13 @@ class ScholarshipController extends Controller
             'university_ids.*' => ['exists:universities,university_id']
         ]);
 
-        // Validate that selected universities belong to selected countries
-        if ($request->has('university_ids') && $request->has('country_ids') && !empty($data['university_ids'])) {
-            $validUniversities = University::whereIn('country_id', $data['country_ids'])
-                ->whereIn('university_id', $data['university_ids'])
-                ->pluck('university_id')
-                ->toArray();
-
-            if (count($data['university_ids']) !== count($validUniversities)) {
-                return response()->json([
-                    'message' => 'Some selected universities do not belong to the selected countries',
-                    'errors' => [
-                        'university_ids' => ['Invalid university selection for the chosen countries']
-                    ]
-                ], 422);
-            }
-        }
-
         $scholarship->update($data);
 
-        // Update countries if provided
+        // Update relationships if provided
         if ($request->has('country_ids')) {
             $scholarship->countries()->sync($data['country_ids']);
         }
 
-        // Update universities if provided
         if ($request->has('university_ids')) {
             $scholarship->universities()->sync($data['university_ids']);
         }
@@ -173,19 +162,15 @@ class ScholarshipController extends Controller
 
         return response()->json([
             'message' => 'Scholarship updated successfully',
-            'scholarship' => $scholarship,
+            'data' => $scholarship,
         ]);
     }
 
     public function destroy(Request $request, Scholarship $scholarship)
     {
         $user = $request->user();
-        $isAdmin = $user && (
-            ($user->role instanceof UserRole && $user->role === UserRole::ADMIN) ||
-            ($user->role === UserRole::ADMIN->value)
-        );
 
-        if (!$isAdmin) {
+        if (!$user || $user->role !== UserRole::ADMIN) {
             return response()->json(['message' => 'Only admins can delete scholarships'], 403);
         }
 
@@ -193,9 +178,6 @@ class ScholarshipController extends Controller
         return response()->json(['message' => 'Scholarship deleted successfully']);
     }
 
-    /**
-     * Get universities by country IDs (for frontend dropdown)
-     */
     public function getUniversitiesByCountries(Request $request)
     {
         $data = $request->validate([
@@ -208,6 +190,62 @@ class ScholarshipController extends Controller
             ->where('is_active', true)
             ->get();
 
-        return response()->json($universities);
+        return response()->json([
+            'data' => $universities
+        ]);
+    }
+
+    // Admin-only methods - show ALL scholarships (including expired/hidden)
+    public function adminIndex(Request $request)
+    {
+        $user = $request->user();
+
+        // This method is only accessible to admins (protected by middleware)
+        $scholarships = Scholarship::with(['sponsor', 'countries', 'universities'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'data' => $scholarships,
+            'meta' => [
+                'total' => $scholarships->count(),
+                'user_role' => $user->role->value,
+                'is_admin' => true,
+                'user_id' => $user->user_id,
+                'filters_applied' => [], // No filters for admin
+                'note' => 'Admin view - shows ALL scholarships including expired and hidden ones'
+            ]
+        ]);
+    }
+
+    public function adminShow(Request $request, Scholarship $scholarship)
+    {
+        $user = $request->user();
+
+        // Admin can see ANY scholarship
+        $scholarship->load(['sponsor', 'countries', 'universities']);
+
+        return response()->json([
+            'data' => $scholarship,
+            'meta' => [
+                'user_role' => $user->role->value,
+                'is_admin' => true,
+                'user_id' => $user->user_id,
+                'note' => 'Admin view - can see any scholarship regardless of status'
+            ]
+        ]);
+    }
+
+    // Debug method for testing user authentication
+    public function debugUser(Request $request)
+    {
+        $user = $request->user();
+
+        return response()->json([
+            'user' => $user,
+            'role' => $user ? $user->role->value : 'guest',
+            'is_admin' => $user && $user->role === UserRole::ADMIN,
+            'authenticated' => $user !== null
+        ]);
     }
 }
