@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Enums\ApplicationStatus;
 
 class ApplicantApplication extends Model
 {
@@ -11,6 +12,8 @@ class ApplicantApplication extends Model
         'specialization_1',
         'specialization_2',
         'specialization_3',
+        'university_name',
+        'country_name',
         'tuition_fee',
         'has_active_program',
         'current_semester_number',
@@ -24,44 +27,59 @@ class ApplicantApplication extends Model
         'scholarship_id_3'
     ];
 
+    protected $casts = [
+        'has_active_program' => 'boolean',
+        'terms_and_condition' => 'boolean',
+    ];
+
+    // Relationships
     public function applicant()
     {
         return $this->belongsTo(Applicant::class, 'applicant_id', 'applicant_id');
-    }
-
-    public function specialization1()
-    {
-        return $this->belongsTo(Specialization::class, 'specialization_1', 'specialization_id');
-    }
-    public function specialization2()
-    {
-        return $this->belongsTo(Specialization::class, 'specialization_2', 'specialization_id');
-    }
-    public function specialization3()
-    {
-        return $this->belongsTo(Specialization::class, 'specialization_3', 'specialization_id');
     }
 
     public function scholarship1()
     {
         return $this->belongsTo(Scholarship::class, 'scholarship_id_1', 'scholarship_id');
     }
+
     public function scholarship2()
     {
         return $this->belongsTo(Scholarship::class, 'scholarship_id_2', 'scholarship_id');
     }
+
     public function scholarship3()
     {
         return $this->belongsTo(Scholarship::class, 'scholarship_id_3', 'scholarship_id');
     }
 
-    public function qualifications()
-    {
-        return $this->hasMany(Qualification::class, 'application_id', 'application_id');
-    }
 
     public function statuses()
     {
-        return $this->hasMany(ApplicantApplicationStatus::class, 'application_id', 'application_id')->latest('date');
+        return $this->hasMany(ApplicantApplicationStatus::class, 'application_id', 'application_id')
+            ->orderBy('created_at', 'desc');
+    }
+
+    public function currentStatus()
+    {
+        return $this->hasOne(ApplicantApplicationStatus::class, 'application_id', 'application_id')
+            ->latest('applicationStatus_id');
+    }
+
+    // Helper methods
+    public function isFinalApproval()
+    {
+        return $this->currentStatus && $this->currentStatus->status_name === ApplicationStatus::FINAL_APPROVAL->value;
+    }
+
+    public function canBeRejected()
+    {
+        return !$this->isFinalApproval();
+    }
+
+    public function canScheduleMeeting()
+    {
+        return $this->currentStatus &&
+            $this->currentStatus->status_name === ApplicationStatus::FIRST_APPROVAL->value;
     }
 }

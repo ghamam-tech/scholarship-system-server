@@ -22,11 +22,14 @@ class Applicant extends Model
         'parent_contact_phone',
         'residence_country',
         'passport_copy_img',
+        'personal_image', // ✅ ADD THIS
         'volunteering_certificate_file',
         'language',
         'is_studied_in_saudi',
         'tahsili_file',
-        'qudorat_file'
+        'qudorat_file',
+        'tahseeli_percentage',
+        'qudorat_percentage'
     ];
 
     public function user()
@@ -37,5 +40,10 @@ class Applicant extends Model
     public function applications()
     {
         return $this->hasMany(ApplicantApplication::class, 'applicant_id', 'applicant_id');
+    }
+
+    public function qualifications()
+    {
+        return $this->hasMany(Qualification::class, 'applicant_id', 'applicant_id');
     }
 }

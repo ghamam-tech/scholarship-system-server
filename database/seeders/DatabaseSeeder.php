@@ -14,6 +14,7 @@ class DatabaseSeeder extends Seeder
             SponsorSeeder::class,
             ScholarshipSeeder::class,
             AdminSeeder::class,
+            ApplicantApplicationSeeder::class,
             // Add other seeders here
         ]);
     }

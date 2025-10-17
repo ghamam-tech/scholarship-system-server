@@ -6,9 +6,6 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('applicants', function (Blueprint $table) {
@@ -17,7 +14,7 @@ return new class extends Migration
             // Primary Key
             $table->id('applicant_id');
 
-            // Personal Details (nullable for registration)
+            // Personal Details
             $table->string('ar_name')->nullable();
             $table->string('en_name')->nullable();
             $table->string('nationality')->nullable();
@@ -27,24 +24,27 @@ return new class extends Migration
             $table->string('passport_number')->nullable();
             $table->date('date_of_birth')->nullable();
 
-            // Parent Contact (nullable)
+            // Parent Contact
             $table->string('parent_contact_name')->nullable();
             $table->string('parent_contact_phone', 20)->nullable();
 
-            // Residence (nullable)
+            // Residence
             $table->string('residence_country')->nullable();
 
-            // Document URLs (S3) - already nullable
+            // Document URLs (S3)
             $table->string('passport_copy_img')->nullable();
+            $table->string('personal_image')->nullable(); // ✅ ADD THIS FIELD
             $table->string('volunteering_certificate_file')->nullable();
+            $table->string('tahsili_file')->nullable();
+            $table->string('qudorat_file')->nullable();
 
-            // Language (nullable)
+            // Language
             $table->string('language')->nullable();
 
             // Education
             $table->boolean('is_studied_in_saudi')->default(false);
-            $table->string('tahsili_file')->nullable(); // S3 URL
-            $table->string('qudorat_file')->nullable(); // S3 URL
+            $table->decimal('tahseeli_percentage', 5, 2)->nullable();
+            $table->decimal('qudorat_percentage', 5, 2)->nullable();
 
             // Foreign Key to users table
             $table->foreignId('user_id')->unique()->constrained('users', 'user_id')->onDelete('cascade');
@@ -53,9 +53,6 @@ return new class extends Migration
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::table('applicants', function (Blueprint $table) {

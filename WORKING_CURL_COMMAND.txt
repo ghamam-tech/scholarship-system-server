@@ -1,0 +1,64 @@
+=== WORKING FILE UPLOAD TEST COMMAND ===
+
+Copy and run this curl command to test file uploads:
+
+curl -X POST http://127.0.0.1:8000/api/v1/applications/submit-complete \
+  -H "Authorization: Bearer 2|2XIUNFQaEDaL4VJrrKbnI0NSWVon0Op5zWi09QcE17fedf77" \
+  -F 'personal_info[en_name]=Test API User' \
+  -F 'personal_info[ar_name]=مستخدم تجريبي' \
+  -F 'personal_info[nationality]=Saudi' \
+  -F 'personal_info[gender]=male' \
+  -F 'personal_info[phone]=+966501234567' \
+  -F 'personal_info[passport_number]=API123456' \
+  -F 'personal_info[date_of_birth]=2000-01-15' \
+  -F 'personal_info[residence_country]=Saudi Arabia' \
+  -F 'personal_info[language]=Arabic' \
+  -F 'personal_info[is_studied_in_saudi]=true' \
+  -F 'personal_info[tahseeli_percentage]=85.5' \
+  -F 'personal_info[qudorat_percentage]=78.2' \
+  -F 'academic_info[qualifications][0][qualification_type]=high_school' \
+  -F 'academic_info[qualifications][0][institute_name]=Test School' \
+  -F 'academic_info[qualifications][0][year_of_graduation]=2019' \
+  -F 'academic_info[qualifications][0][cgpa]=98.5' \
+  -F 'academic_info[qualifications][0][cgpa_out_of]=99.99' \
+  -F 'academic_info[qualifications][0][language_of_study]=Arabic' \
+  -F 'academic_info[qualifications][0][specialization]=Science' \
+  -F 'program_details[scholarship_ids][0]=1' \
+  -F 'program_details[specialization_1]=Computer Science' \
+  -F 'program_details[university_name]=Test University' \
+  -F 'program_details[country_name]=USA' \
+  -F 'program_details[tuition_fee]=50000' \
+  -F 'program_details[has_active_program]=true' \
+  -F 'program_details[terms_and_condition]=true' \
+  -F 'passport_copy=@test_files/passport_copy.pdf' \
+  -F 'personal_image=@test_files/personal_image.jpg' \
+  -F 'secondary_school_certificate=@test_files/tahsili_file.pdf' \
+  -F 'secondary_school_transcript=@test_files/qudorat_file.pdf' \
+  -F 'volunteering_certificate=@test_files/volunteering_certificate.pdf' \
+  -F 'offer_letter=@test_files/offer_letter.pdf' \
+  -F 'academic_info[qualifications][0][document_file]=@test_files/qualification_doc1.pdf'
+
+=== WHAT THIS WILL DO ===
+
+1. Upload files to your S3 folders:
+   - passport_copy.pdf → passport/ folder
+   - personal_image.jpg → personal image/ folder
+   - tahsili_file.pdf → tahsili/ folder
+   - qudorat_file.pdf → qudorat/ folder
+   - volunteering_certificate.pdf → volunteering certificate/ folder
+   - offer_letter.pdf → Good conduct/ folder
+   - qualification_doc1.pdf → acadimic qualification/ folder
+
+2. Save file paths in the database
+3. Create an application record
+4. Create qualification records
+
+=== EXPECTED RESULT ===
+
+You should get a JSON response with the created application data, and the file fields should no longer be NULL in your database.
+
+=== TO CHECK RESULTS ===
+
+1. Check your S3 bucket - files should appear in the correct folders
+2. Check your database - file paths should be saved
+3. The API response should show the created application with file paths

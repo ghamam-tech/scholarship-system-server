@@ -20,16 +20,15 @@ return new class extends Migration {
             $table->decimal('cgpa_out_of', 4, 2)->nullable();
 
             $table->string('language_of_study')->nullable();
-
-            $table->decimal('tahseeli_percentage', 5, 2)->nullable();
-            $table->decimal('qudrat_percentage', 5, 2)->nullable();
-
-            $table->string('specialization')->nullable();          // textual field in ERD
+            $table->string('specialization')->nullable();
             $table->string('research_title')->nullable();
+            $table->string('document_file')->nullable();
 
-            $table->string('document_file')->nullable();           // path to file
-
-            $table->foreignId('application_id')->constrained('applicant_applications', 'application_id')->cascadeOnUpdate()->cascadeOnDelete();
+            // Link to applicant (not application)
+            $table->foreignId('applicant_id')
+                  ->constrained('applicants', 'applicant_id')
+                  ->cascadeOnUpdate()
+                  ->cascadeOnDelete();
 
             $table->timestamps();
         });
