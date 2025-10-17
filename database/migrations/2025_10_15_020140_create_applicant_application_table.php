@@ -5,7 +5,8 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration {
-    public function up(): void {
+    public function up(): void
+    {
         Schema::create('applicant_applications', function (Blueprint $table) {
             $table->id('application_id');
 
@@ -29,26 +30,22 @@ return new class extends Migration {
             $table->string('offer_letter_file')->nullable(); // S3 key
 
             $table->foreignId('applicant_id')
-                  ->constrained('applicants', 'applicant_id')
-                  ->cascadeOnUpdate()
-                  ->cascadeOnDelete();
+                ->constrained('applicants', 'applicant_id')
+                ->cascadeOnUpdate()
+                ->cascadeOnDelete();
 
-            // up to three target scholarships (keep as FK)
-            $table->foreignId('scholarship_id_1')->nullable()
-                  ->constrained('scholarships', 'scholarship_id')
-                  ->nullOnDelete()->cascadeOnUpdate();
-            $table->foreignId('scholarship_id_2')->nullable()
-                  ->constrained('scholarships', 'scholarship_id')
-                  ->nullOnDelete()->cascadeOnUpdate();
-            $table->foreignId('scholarship_id_3')->nullable()
-                  ->constrained('scholarships', 'scholarship_id')
-                  ->nullOnDelete()->cascadeOnUpdate();
+            // single target scholarship (FK)
+            $table->foreignId('scholarship_id')
+                ->constrained('scholarships', 'scholarship_id')
+                ->cascadeOnUpdate()
+                ->cascadeOnDelete();
 
             $table->timestamps();
         });
     }
 
-    public function down(): void {
+    public function down(): void
+    {
         Schema::dropIfExists('applicant_applications');
     }
 };

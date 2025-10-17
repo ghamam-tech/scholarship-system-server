@@ -6,16 +6,19 @@ use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    public function run()
+    /**
+     * Seed the application's database.
+     */
+    public function run(): void
     {
         $this->call([
-            CountrySeeder::class,
-            UniversitySeeder::class,
-            SponsorSeeder::class,
-            ScholarshipSeeder::class,
-            AdminSeeder::class,
-            ApplicantApplicationSeeder::class,
-            // Add other seeders here
+            // Add your seeders in the correct order
+            CountrySeeder::class,           // If you have countries
+            UniversitySeeder::class,        // If you have universities  
+            SponsorSeeder::class,           // Sponsors must come first
+            ScholarshipSeeder::class,       // Then scholarships
+            AdminSeeder::class,             // Then admin users
+            ApplicantApplicationSeeder::class, // Finally applicants and applications
         ]);
     }
 }

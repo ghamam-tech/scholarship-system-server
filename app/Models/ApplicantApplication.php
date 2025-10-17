@@ -22,9 +22,7 @@ class ApplicantApplication extends Model
         'terms_and_condition',
         'offer_letter_file',
         'applicant_id',
-        'scholarship_id_1',
-        'scholarship_id_2',
-        'scholarship_id_3'
+        'scholarship_id', // Changed from scholarship_id_1
     ];
 
     protected $casts = [
@@ -38,22 +36,12 @@ class ApplicantApplication extends Model
         return $this->belongsTo(Applicant::class, 'applicant_id', 'applicant_id');
     }
 
-    public function scholarship1()
+    public function scholarship()
     {
-        return $this->belongsTo(Scholarship::class, 'scholarship_id_1', 'scholarship_id');
+        return $this->belongsTo(Scholarship::class, 'scholarship_id', 'scholarship_id');
     }
 
-    public function scholarship2()
-    {
-        return $this->belongsTo(Scholarship::class, 'scholarship_id_2', 'scholarship_id');
-    }
-
-    public function scholarship3()
-    {
-        return $this->belongsTo(Scholarship::class, 'scholarship_id_3', 'scholarship_id');
-    }
-
-
+    // ... keep other methods the same
     public function statuses()
     {
         return $this->hasMany(ApplicantApplicationStatus::class, 'application_id', 'application_id')

@@ -58,8 +58,7 @@ class ApplicantApplicationController extends Controller
             'academic_info.qualifications.*.document_file' => ['required', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
 
             // Program Details
-            'program_details.scholarship_ids' => ['required', 'array', 'min:1', 'max:3'],
-            'program_details.scholarship_ids.*' => ['exists:scholarships,scholarship_id'],
+            'program_details.scholarship_id' => ['required', 'exists:scholarships,scholarship_id'],
             'program_details.specialization_1' => ['required', 'string', 'max:255'],
             'program_details.specialization_2' => ['nullable', 'string', 'max:255'],
             'program_details.specialization_3' => ['nullable', 'string', 'max:255'],
@@ -90,15 +89,21 @@ class ApplicantApplicationController extends Controller
             // Step 2: Handle document uploads for applicant
             $this->handleDocumentUploads($request, $applicant);
 
-            // Step 3: Validate Scholarships
-            $validScholarships = $this->validateScholarships($data['program_details']['scholarship_ids']);
+            // Step 3: Validate Scholarship
+            $scholarship = Scholarship::where('scholarship_id', $data['program_details']['scholarship_id'])
+                ->where('is_active', true)
+                ->where('opening_date', '<=', now())
+                ->where('closing_date', '>=', now())
+                ->first();
+
+            if (!$scholarship) {
+                return response()->json(['message' => 'Selected scholarship is not available'], 422);
+            }
 
             // Step 4: Create Application
             $application = ApplicantApplication::create([
                 'applicant_id' => $applicant->applicant_id,
-                'scholarship_id_1' => $validScholarships[0] ?? null,
-                'scholarship_id_2' => $validScholarships[1] ?? null,
-                'scholarship_id_3' => $validScholarships[2] ?? null,
+                'scholarship_id' => $data['program_details']['scholarship_id'],
                 'specialization_1' => $data['program_details']['specialization_1'],
                 'specialization_2' => $data['program_details']['specialization_2'] ?? null,
                 'specialization_3' => $data['program_details']['specialization_3'] ?? null,
@@ -158,7 +163,7 @@ class ApplicantApplicationController extends Controller
             return response()->json([
                 'message' => 'Application submitted successfully',
                 'application_id' => $application->application_id,
-                'application' => $application->load(['currentStatus', 'scholarship1', 'scholarship2', 'scholarship3', 'applicant.qualifications'])
+                'application' => $application->load(['currentStatus', 'scholarship', 'applicant.qualifications'])
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -170,57 +175,97 @@ class ApplicantApplicationController extends Controller
     }
 
     /**
-     * Create new application (simple version)
+     * Create new application with program details
      */
     public function store(Request $request)
     {
         $applicant = $request->user()->applicant;
 
         if (!$applicant) {
-            return response()->json(['message' => 'Applicant profile not found'], 404);
+            return response()->json(['message' => 'Applicant profile not found. Please complete your profile first.'], 404);
         }
 
         $data = $request->validate([
-            'scholarship_ids' => ['required', 'array', 'min:1', 'max:3'],
-            'scholarship_ids.*' => ['exists:scholarships,scholarship_id'],
+            'program_details.scholarship_id' => ['required', 'exists:scholarships,scholarship_id'],
+            'program_details.specialization_1' => ['required', 'string', 'max:255'],
+            'program_details.specialization_2' => ['nullable', 'string', 'max:255'],
+            'program_details.specialization_3' => ['nullable', 'string', 'max:255'],
+            'program_details.university_name' => ['required', 'string', 'max:255'],
+            'program_details.country_name' => ['required', 'string', 'max:100'],
+            'program_details.tuition_fee' => ['nullable', 'numeric', 'min:0'],
+            'program_details.has_active_program' => ['required', 'boolean'],
+            'program_details.current_semester_number' => ['nullable', 'integer', 'min:1', 'max:20'],
+            'program_details.cgpa' => ['nullable', 'numeric', 'min:0', 'max:4'],
+            'program_details.cgpa_out_of' => ['nullable', 'numeric', 'min:0'],
+            'program_details.terms_and_condition' => ['required', 'accepted'],
+            'program_details.offer_letter' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
         ]);
 
         try {
             DB::beginTransaction();
 
-            $validScholarships = $this->validateScholarships($data['scholarship_ids']);
+            // Validate scholarship availability
+            $scholarship = Scholarship::where('scholarship_id', $data['program_details']['scholarship_id'])
+                ->where('is_active', true)
+                ->where('opening_date', '<=', now())
+                ->where('closing_date', '>=', now())
+                ->first();
 
+            if (!$scholarship) {
+                return response()->json(['message' => 'Selected scholarship is not available'], 422);
+            }
+
+            // Handle offer letter upload
+            $offerLetterFile = null;
+            if ($request->hasFile('program_details.offer_letter')) {
+                $filename = time() . '_' . str_replace(' ', '_', $request->file('program_details.offer_letter')->getClientOriginalName());
+                $offerLetterPath = $request->file('program_details.offer_letter')->storeAs("application-documents/offer-letters/", $filename, 's3');
+                $offerLetterFile = config('filesystems.disks.s3.url') . '/' . $offerLetterPath;
+            }
+
+            // Create application
             $application = ApplicantApplication::create([
                 'applicant_id' => $applicant->applicant_id,
-                'scholarship_id_1' => $validScholarships[0] ?? null,
-                'scholarship_id_2' => $validScholarships[1] ?? null,
-                'scholarship_id_3' => $validScholarships[2] ?? null,
+                'scholarship_id' => $data['program_details']['scholarship_id'],
+                'specialization_1' => $data['program_details']['specialization_1'],
+                'specialization_2' => $data['program_details']['specialization_2'] ?? null,
+                'specialization_3' => $data['program_details']['specialization_3'] ?? null,
+                'university_name' => $data['program_details']['university_name'],
+                'country_name' => $data['program_details']['country_name'],
+                'tuition_fee' => $data['program_details']['tuition_fee'] ?? null,
+                'has_active_program' => $data['program_details']['has_active_program'],
+                'current_semester_number' => $data['program_details']['current_semester_number'] ?? null,
+                'cgpa' => $data['program_details']['cgpa'] ?? null,
+                'cgpa_out_of' => $data['program_details']['cgpa_out_of'] ?? null,
+                'terms_and_condition' => $data['program_details']['terms_and_condition'],
+                'offer_letter_file' => $offerLetterFile,
             ]);
 
+            // Set initial status
             ApplicantApplicationStatus::create([
                 'application_id' => $application->application_id,
                 'status_name' => ApplicationStatus::ENROLLED->value,
                 'date' => now(),
-                'comment' => 'Application created'
+                'comment' => 'Application submitted with program details'
             ]);
 
             DB::commit();
 
             return response()->json([
-                'message' => 'Application created successfully',
-                'application' => $application->load(['currentStatus', 'scholarship1', 'scholarship2', 'scholarship3'])
+                'message' => 'Application submitted successfully',
+                'application' => $application->load(['currentStatus', 'scholarship', 'applicant.qualifications'])
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
-                'message' => 'Failed to create application',
+                'message' => 'Failed to submit application',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Update program details
+     * Update program details for an existing application
      */
     public function updateProgramDetails(Request $request, $applicationId)
     {
@@ -334,9 +379,7 @@ class ApplicantApplicationController extends Controller
         $application = ApplicantApplication::with([
             'applicant.user',
             'applicant.qualifications',
-            'scholarship1',
-            'scholarship2',
-            'scholarship3',
+            'scholarship',
             'statuses',
             'currentStatus'
         ])->findOrFail($applicationId);
@@ -363,9 +406,7 @@ class ApplicantApplicationController extends Controller
         }
 
         $applications = ApplicantApplication::with([
-            'scholarship1',
-            'scholarship2',
-            'scholarship3',
+            'scholarship',
             'currentStatus',
             'applicant.qualifications',
             'applicant'
@@ -387,61 +428,11 @@ class ApplicantApplicationController extends Controller
         $applications = ApplicantApplication::with([
             'applicant.user',
             'applicant.qualifications',
-            'scholarship1',
-            'scholarship2',
-            'scholarship3',
+            'scholarship',
             'currentStatus'
         ])->get();
 
         return response()->json($applications);
-    }
-
-    /**
-     * Handle document uploads for applicant
-     */
-    private function handleDocumentUploads(Request $request, Applicant $applicant)
-    {
-        $documentFields = [
-            'passport_copy' => ['passport_copy_img', 'applicant-documents/passport/'],
-            'personal_image' => ['personal_image', 'applicant-documents/personal-images/'],
-            'secondary_school_certificate' => ['tahsili_file', 'applicant-documents/tahsili/'],
-            'secondary_school_transcript' => ['qudorat_file', 'applicant-documents/qudorat/'],
-            'volunteering_certificate' => ['volunteering_certificate_file', 'applicant-documents/volunteering/'],
-        ];
-
-        foreach ($documentFields as $requestField => $config) {
-            $dbField = $config[0];
-            $s3Folder = $config[1];
-
-            if ($request->hasFile($requestField)) {
-                if ($applicant->$dbField) {
-                    Storage::disk('s3')->delete($applicant->$dbField);
-                }
-
-                $filename = time() . '_' . str_replace(' ', '_', $request->file($requestField)->getClientOriginalName());
-                $filePath = $request->file($requestField)->storeAs($s3Folder, $filename, 's3');
-                $fullUrl = config('filesystems.disks.s3.url') . '/' . $filePath;
-                $applicant->update([$dbField => $fullUrl]);
-            }
-        }
-    }
-
-    /**
-     * Validate scholarships
-     */
-    private function validateScholarships(array $scholarshipIds)
-    {
-        $scholarships = Scholarship::whereIn('scholarship_id', $scholarshipIds)
-            ->where('is_active', true)
-            ->where('opening_date', '<=', now())
-            ->where('closing_date', '>=', now())
-            ->get();
-
-        if (count($scholarships) !== count($scholarshipIds)) {
-            throw new \Exception('One or more scholarships are not available');
-        }
-
-        return $scholarshipIds;
     }
 
     /**
@@ -509,5 +500,53 @@ class ApplicantApplicationController extends Controller
         ];
 
         return response()->json($stats);
+    }
+
+    /**
+     * Handle document uploads for applicant
+     */
+    private function handleDocumentUploads(Request $request, Applicant $applicant)
+    {
+        $documentFields = [
+            'passport_copy' => ['passport_copy_img', 'applicant-documents/passport/'],
+            'personal_image' => ['personal_image', 'applicant-documents/personal-images/'],
+            'secondary_school_certificate' => ['tahsili_file', 'applicant-documents/tahsili/'],
+            'secondary_school_transcript' => ['qudorat_file', 'applicant-documents/qudorat/'],
+            'volunteering_certificate' => ['volunteering_certificate_file', 'applicant-documents/volunteering/'],
+        ];
+
+        foreach ($documentFields as $requestField => $config) {
+            $dbField = $config[0];
+            $s3Folder = $config[1];
+
+            if ($request->hasFile($requestField)) {
+                if ($applicant->$dbField) {
+                    Storage::disk('s3')->delete($applicant->$dbField);
+                }
+
+                $filename = time() . '_' . str_replace(' ', '_', $request->file($requestField)->getClientOriginalName());
+                $filePath = $request->file($requestField)->storeAs($s3Folder, $filename, 's3');
+                $fullUrl = config('filesystems.disks.s3.url') . '/' . $filePath;
+                $applicant->update([$dbField => $fullUrl]);
+            }
+        }
+    }
+
+    /**
+     * Validate scholarships
+     */
+    private function validateScholarships(array $scholarshipIds)
+    {
+        $scholarships = Scholarship::whereIn('scholarship_id', $scholarshipIds)
+            ->where('is_active', true)
+            ->where('opening_date', '<=', now())
+            ->where('closing_date', '>=', now())
+            ->get();
+
+        if (count($scholarships) !== count($scholarshipIds)) {
+            throw new \Exception('One or more scholarships are not available');
+        }
+
+        return $scholarshipIds;
     }
 }
