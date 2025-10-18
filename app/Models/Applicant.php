@@ -32,7 +32,8 @@ class Applicant extends Model
         'tahsili_file',
         'qudorat_file',
         'tahseeli_percentage',
-        'qudorat_percentage'
+        'qudorat_percentage',
+        'is_completed'
     ];
 
     public function user()

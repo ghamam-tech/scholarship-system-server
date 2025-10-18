@@ -13,7 +13,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Qualifications Management
     Route::post('/applicant/qualifications', [ApplicantController::class, 'addQualification']);
-    Route::put('/applicant/qualifications/{qualificationId}', [ApplicantController::class, 'updateQualification']);
+    Route::match(['PUT','POST'], '/applicant/qualifications/{qualificationId}', [ApplicantController::class, 'updateQualification']);
     Route::delete('/applicant/qualifications/{qualificationId}', [ApplicantController::class, 'deleteQualification']);
 
     // Application Submission (after profile completion)

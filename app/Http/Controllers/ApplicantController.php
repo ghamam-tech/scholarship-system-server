@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
+
 class ApplicantController extends Controller
 {
     public function completeProfile(Request $request)
@@ -64,7 +65,7 @@ class ApplicantController extends Controller
             DB::beginTransaction();
 
             // Step 1: Update Applicant Personal Info
-            $applicant->update($data['personal_info']);
+            $applicant->update(array_merge($data['personal_info'], ['is_completed' => true]));
 
             // Step 2: Upload applicant documents
             $this->handleDocumentUploads($request, $applicant);
@@ -101,7 +102,6 @@ class ApplicantController extends Controller
                 'message' => 'Profile completed successfully',
                 'applicant' => $applicant->load('qualifications')
             ], 201);
-
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -162,7 +162,6 @@ class ApplicantController extends Controller
                 'message' => 'Profile updated successfully',
                 'applicant' => $applicant->load('qualifications')
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -219,7 +218,7 @@ class ApplicantController extends Controller
     /**
      * Update applicant profile (partial update)
      */
-   
+
 
     /**
      * Add new qualification
@@ -280,7 +279,6 @@ class ApplicantController extends Controller
     public function updateQualification(Request $request, $qualificationId)
     {
         $applicant = $request->user()->applicant;
-
         if (!$applicant) {
             return response()->json(['message' => 'Applicant profile not found'], 404);
         }
@@ -289,42 +287,52 @@ class ApplicantController extends Controller
 
         $data = $request->validate([
             'qualification_type' => ['sometimes', Rule::in(['high_school', 'diploma', 'bachelor', 'master', 'phd', 'other'])],
-            'institute_name' => ['sometimes', 'string', 'max:255'],
+            'institute_name'     => ['sometimes', 'string', 'max:255'],
             'year_of_graduation' => ['sometimes', 'integer', 'min:1900', 'max:' . (date('Y') + 5)],
-            'cgpa' => ['nullable', 'numeric', 'min:0'],
-            'cgpa_out_of' => ['nullable', 'numeric', 'min:0'],
-            'language_of_study' => ['nullable', 'string', 'max:100'],
-            'specialization' => ['nullable', 'string', 'max:255'],
-            'research_title' => ['nullable', 'string', 'max:500'],
-            'document_file' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+            'cgpa'               => ['nullable', 'numeric', 'min:0'],
+            'cgpa_out_of'        => ['nullable', 'numeric', 'min:0'],
+            'language_of_study'  => ['nullable', 'string', 'max:100'],
+            'specialization'     => ['nullable', 'string', 'max:255'],
+            'research_title'     => ['nullable', 'string', 'max:500'],
+            'document_file'      => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
         ]);
 
         try {
             $documentFile = $qualification->document_file;
+
+            // IMPORTANT: files won’t arrive on raw PUT; use POST + _method=PUT
             if ($request->hasFile('document_file')) {
                 if ($documentFile) {
+                    // This won’t delete if you stored full URL; okay to keep for now.
                     Storage::disk('s3')->delete($documentFile);
                 }
-                $filename = time() . '_' . str_replace(' ', '_', $request->file('document_file')->getClientOriginalName());
-                $documentPath = $request->file('document_file')->storeAs("applicants/{$applicant->applicant_id}/qualifications", $filename, 's3');
+                $file = $request->file('document_file');
+                $filename = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
+                $documentPath = $file->storeAs(
+                    "applicants/{$applicant->applicant_id}/qualifications",
+                    $filename,
+                    's3'
+                );
                 $documentFile = config('filesystems.disks.s3.url') . '/' . $documentPath;
             }
 
             $qualification->update([
                 'qualification_type' => $data['qualification_type'] ?? $qualification->qualification_type,
-                'institute_name' => $data['institute_name'] ?? $qualification->institute_name,
+                'institute_name'     => $data['institute_name'] ?? $qualification->institute_name,
                 'year_of_graduation' => $data['year_of_graduation'] ?? $qualification->year_of_graduation,
-                'cgpa' => $data['cgpa'] ?? $qualification->cgpa,
-                'cgpa_out_of' => $data['cgpa_out_of'] ?? $qualification->cgpa_out_of,
-                'language_of_study' => $data['language_of_study'] ?? $qualification->language_of_study,
-                'specialization' => $data['specialization'] ?? $qualification->specialization,
-                'research_title' => $data['research_title'] ?? $qualification->research_title,
-                'document_file' => $documentFile,
+                'cgpa'               => array_key_exists('cgpa', $data) ? $data['cgpa'] : $qualification->cgpa,
+                'cgpa_out_of'        => array_key_exists('cgpa_out_of', $data) ? $data['cgpa_out_of'] : $qualification->cgpa_out_of,
+                'language_of_study'  => $data['language_of_study'] ?? $qualification->language_of_study,
+                'specialization'     => $data['specialization'] ?? $qualification->specialization,
+                'research_title'     => $data['research_title'] ?? $qualification->research_title,
+                'document_file'      => $documentFile,
             ]);
+
+            $qualification->refresh(); // ensure response matches DB
 
             return response()->json([
                 'message' => 'Qualification updated successfully',
-                'qualification' => $qualification
+                'qualification' => $qualification,
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -333,6 +341,7 @@ class ApplicantController extends Controller
             ], 500);
         }
     }
+
 
     /**
      * Delete qualification
