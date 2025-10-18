@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Models\User;
 use App\Enums\UserRole;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 /**
@@ -26,7 +27,6 @@ class UserFactory extends Factory
     {
         return [
             'email' => fake()->unique()->safeEmail(),
-            'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'role' => fake()->randomElement([UserRole::APPLICANT->value, UserRole::SPONSOR->value, UserRole::ADMIN->value]),
             'remember_token' => Str::random(10),

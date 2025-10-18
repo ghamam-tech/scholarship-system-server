@@ -11,9 +11,6 @@ use Illuminate\Validation\Rule;
 
 class ApplicantController extends Controller
 {
-    /**
-     * Complete applicant profile (separate from application)
-     */
     public function completeProfile(Request $request)
     {
         $user = $request->user();
@@ -21,7 +18,6 @@ class ApplicantController extends Controller
         // Check if applicant already exists
         $applicant = $user->applicant;
         if (!$applicant) {
-            // Create new applicant record if doesn't exist
             $applicant = Applicant::create(['user_id' => $user->user_id]);
         }
 
@@ -43,7 +39,7 @@ class ApplicantController extends Controller
             'personal_info.tahseeli_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'personal_info.qudorat_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
 
-            // Academic Info
+            // Academic Info (must have at least 1 qualification)
             'academic_info.qualifications' => ['required', 'array', 'min:1'],
             'academic_info.qualifications.*.qualification_type' => ['required', Rule::in(['high_school', 'diploma', 'bachelor', 'master', 'phd', 'other'])],
             'academic_info.qualifications.*.institute_name' => ['required', 'string', 'max:255'],
@@ -55,11 +51,11 @@ class ApplicantController extends Controller
             'academic_info.qualifications.*.research_title' => ['nullable', 'string', 'max:500'],
             'academic_info.qualifications.*.document_file' => ['required', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
 
-            // Document files
+            // Document Files (all required except volunteering)
             'passport_copy' => ['required', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
             'personal_image' => ['required', 'file', 'mimes:jpeg,png,jpg', 'max:5120'],
-            'secondary_school_certificate' => ['required', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
-            'secondary_school_transcript' => ['required', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+            'tahsili_file' => ['required', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+            'qudorat_file' => ['required', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
             'volunteering_certificate' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
         ]);
 
@@ -69,20 +65,19 @@ class ApplicantController extends Controller
             // Step 1: Update Applicant Personal Info
             $applicant->update($data['personal_info']);
 
-            // Step 2: Handle document uploads for applicant
+            // Step 2: Upload applicant documents
             $this->handleDocumentUploads($request, $applicant);
 
-            // Step 3: Delete existing qualifications and add new ones
+            // Step 3: Replace all qualifications
             $applicant->qualifications()->delete();
 
             foreach ($data['academic_info']['qualifications'] as $index => $qualData) {
                 $documentFile = null;
-
                 if ($request->hasFile("academic_info.qualifications.{$index}.document_file")) {
-                    $filename = time() . '_' . str_replace(' ', '_', $request->file("academic_info.qualifications.{$index}.document_file")->getClientOriginalName());
-                    $documentPath = $request->file("academic_info.qualifications.{$index}.document_file")
-                        ->storeAs("applicant-documents/qualifications/", $filename, 's3');
-                    $documentFile = config('filesystems.disks.s3.url') . '/' . $documentPath;
+                    $file = $request->file("academic_info.qualifications.{$index}.document_file");
+                    $filename = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
+                    $path = $file->storeAs("applicants/{$applicant->applicant_id}/qualifications", $filename, 's3');
+                    $documentFile = config('filesystems.disks.s3.url') . '/' . $path;
                 }
 
                 Qualification::create([
@@ -95,7 +90,7 @@ class ApplicantController extends Controller
                     'language_of_study' => $qualData['language_of_study'] ?? null,
                     'specialization' => $qualData['specialization'] ?? null,
                     'research_title' => $qualData['research_title'] ?? null,
-                    'document_file' => $documentFile
+                    'document_file' => $documentFile,
                 ]);
             }
 
@@ -105,6 +100,7 @@ class ApplicantController extends Controller
                 'message' => 'Profile completed successfully',
                 'applicant' => $applicant->load('qualifications')
             ], 201);
+
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -126,7 +122,6 @@ class ApplicantController extends Controller
         }
 
         $data = $request->validate([
-            // Personal Info (all optional for updates)
             'personal_info.ar_name' => ['sometimes', 'string', 'max:255'],
             'personal_info.en_name' => ['sometimes', 'string', 'max:255'],
             'personal_info.nationality' => ['sometimes', 'string', 'max:100'],
@@ -143,23 +138,21 @@ class ApplicantController extends Controller
             'personal_info.tahseeli_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'personal_info.qudorat_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
 
-            // Document files (optional for updates)
+            // Optional document uploads
             'passport_copy' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
             'personal_image' => ['nullable', 'file', 'mimes:jpeg,png,jpg', 'max:5120'],
-            'secondary_school_certificate' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
-            'secondary_school_transcript' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+            'tahsili_file' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+            'qudorat_file' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
             'volunteering_certificate' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
         ]);
 
         try {
             DB::beginTransaction();
 
-            // Update personal info if provided
             if (isset($data['personal_info'])) {
                 $applicant->update($data['personal_info']);
             }
 
-            // Handle document uploads
             $this->handleDocumentUploads($request, $applicant);
 
             DB::commit();
@@ -168,12 +161,42 @@ class ApplicantController extends Controller
                 'message' => 'Profile updated successfully',
                 'applicant' => $applicant->load('qualifications')
             ]);
+
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'message' => 'Failed to update profile',
                 'error' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Handle document uploads for applicant profile
+     */
+    private function handleDocumentUploads(Request $request, Applicant $applicant)
+    {
+        $documentFields = [
+            'passport_copy' => 'passport_copy_img',
+            'personal_image' => 'personal_image',
+            'tahsili_file' => 'tahsili_file',
+            'qudorat_file' => 'qudorat_file',
+            'volunteering_certificate' => 'volunteering_certificate_file',
+        ];
+
+        foreach ($documentFields as $requestField => $dbField) {
+            if ($request->hasFile($requestField)) {
+                if ($applicant->$dbField) {
+                    Storage::disk('s3')->delete($applicant->$dbField);
+                }
+
+                $file = $request->file($requestField);
+                $filename = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
+                $path = $file->storeAs("applicants/{$applicant->applicant_id}/documents", $filename, 's3');
+                $fullUrl = config('filesystems.disks.s3.url') . '/' . $path;
+
+                $applicant->update([$dbField => $fullUrl]);
+            }
         }
     }
 
@@ -190,10 +213,12 @@ class ApplicantController extends Controller
 
         $applicant->load('qualifications');
 
-        return response()->json([
-            'applicant' => $applicant
-        ]);
+        return response()->json(['applicant' => $applicant]);
     }
+    /**
+     * Update applicant profile (partial update)
+     */
+   
 
     /**
      * Add new qualification
@@ -342,29 +367,7 @@ class ApplicantController extends Controller
     /**
      * Handle document uploads for applicant profile
      */
-    private function handleDocumentUploads(Request $request, Applicant $applicant)
-    {
-        $documentFields = [
-            'passport_copy' => 'passport_copy_img',
-            'personal_image' => 'personal_image',
-            'secondary_school_certificate' => 'tahsili_file',
-            'secondary_school_transcript' => 'qudorat_file',
-            'volunteering_certificate' => 'volunteering_certificate_file',
-        ];
 
-        foreach ($documentFields as $requestField => $dbField) {
-            if ($request->hasFile($requestField)) {
-                if ($applicant->$dbField) {
-                    Storage::disk('s3')->delete($applicant->$dbField);
-                }
-
-                $filename = time() . '_' . str_replace(' ', '_', $request->file($requestField)->getClientOriginalName());
-                $filePath = $request->file($requestField)->storeAs("applicants/{$applicant->applicant_id}/documents", $filename, 's3');
-                $fullUrl = config('filesystems.disks.s3.url') . '/' . $filePath;
-                $applicant->update([$dbField => $fullUrl]);
-            }
-        }
-    }
 
     /**
      * Display a listing of applicants (Admin only)
