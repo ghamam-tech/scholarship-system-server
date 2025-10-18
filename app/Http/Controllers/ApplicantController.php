@@ -8,13 +8,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-
+use Illuminate\Support\Facades\Log;
 class ApplicantController extends Controller
 {
     public function completeProfile(Request $request)
     {
+        Log::info($request->all());
         $user = $request->user();
-
+        // $data = $request->all();
         // Check if applicant already exists
         $applicant = $user->applicant;
         if (!$applicant) {
@@ -30,7 +31,7 @@ class ApplicantController extends Controller
             'personal_info.place_of_birth' => ['required', 'string', 'max:255'],
             'personal_info.phone' => ['required', 'string', 'max:20'],
             'personal_info.passport_number' => ['required', 'string', 'max:50', 'unique:applicants,passport_number,' . $applicant->applicant_id . ',applicant_id'],
-            'personal_info.date_of_birth' => ['required', 'date'],
+            'personal_info.date_of_birth' => ['required', 'string'],
             'personal_info.parent_contact_name' => ['required', 'string', 'max:255'],
             'personal_info.parent_contact_phone' => ['required', 'string', 'max:20'],
             'personal_info.residence_country' => ['required', 'string', 'max:100'],
@@ -54,8 +55,8 @@ class ApplicantController extends Controller
             // Document Files (all required except volunteering)
             'passport_copy' => ['required', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
             'personal_image' => ['required', 'file', 'mimes:jpeg,png,jpg', 'max:5120'],
-            'tahsili_file' => ['required', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
-            'qudorat_file' => ['required', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+            'tahsili_file' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+            'qudorat_file' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
             'volunteering_certificate' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
         ]);
 
