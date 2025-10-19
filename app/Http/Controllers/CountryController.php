@@ -15,7 +15,7 @@ class CountryController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        
+
         // Check if user is admin
         $isAdmin = $user && (
             ($user->role instanceof UserRole && $user->role === UserRole::ADMIN) ||
@@ -120,6 +120,16 @@ class CountryController extends Controller
 
         if (!$isAdmin) {
             return response()->json(['message' => 'Only admins can delete countries'], 403);
+        }
+
+        // Check if there are any active universities in this country
+        $activeUniversitiesCount = $country->universities()->where('is_active', true)->count();
+
+        if ($activeUniversitiesCount > 0) {
+            return response()->json([
+                'message' => 'Cannot delete country. There are ' . $activeUniversitiesCount . ' active universities in this country.',
+                'active_universities_count' => $activeUniversitiesCount
+            ], 422);
         }
 
         $country->delete();

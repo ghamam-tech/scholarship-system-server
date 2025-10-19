@@ -367,7 +367,7 @@ class ApplicantApplicationController extends Controller
     /**
      * Update application status (Admin only)
      */
-    public function updateStatus(Request $request, $applicationId)
+    public function addStatus(Request $request, $applicationId)
     {
         $application = ApplicantApplication::with('currentStatus')->findOrFail($applicationId);
 

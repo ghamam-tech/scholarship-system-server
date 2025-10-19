@@ -15,7 +15,9 @@ Route::get('countries/{country}', [CountryController::class, 'show']);
 
 // Admin-only routes - protected by middleware
 Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
-    Route::post('countries', [CountryController::class, 'store']);
-    Route::match(['put', 'patch'], 'countries/{country}', [CountryController::class, 'update']);
-    Route::delete('countries/{country}', [CountryController::class, 'destroy']);
+    Route::get('admin/countries', [CountryController::class, 'index']);
+    Route::get('admin/countries/{country}', [CountryController::class, 'show']);
+    Route::post('admin/countries', [CountryController::class, 'store']);
+    Route::match(['put', 'patch'], 'admin/countries/{country}', [CountryController::class, 'update']);
+    Route::delete('admin/countries/{country}', [CountryController::class, 'destroy']);
 });

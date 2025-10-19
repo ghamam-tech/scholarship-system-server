@@ -13,20 +13,20 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Qualifications Management
     Route::post('/applicant/qualifications', [ApplicantController::class, 'addQualification']);
-    Route::match(['PUT','POST'], '/applicant/qualifications/{qualificationId}', [ApplicantController::class, 'updateQualification']);
+    Route::match(['PUT', 'POST'], '/applicant/qualifications/{qualificationId}', [ApplicantController::class, 'updateQualification']);
     Route::delete('/applicant/qualifications/{qualificationId}', [ApplicantController::class, 'deleteQualification']);
 
     // Application Submission (after profile completion)
     Route::post('/applications', [ApplicantApplicationController::class, 'store']);
-    Route::post('/applications/submit-complete', [ApplicantApplicationController::class, 'submitCompleteApplication']);
-    Route::get('/applications', [ApplicantApplicationController::class, 'index']);
+     Route::get('/applications', [ApplicantApplicationController::class, 'index']);
     Route::get('/applications/{id}', [ApplicantApplicationController::class, 'show']);
     Route::put('/applications/{id}/program-details', [ApplicantApplicationController::class, 'updateProgramDetails']);
 
     // Admin routes
     Route::middleware(['role:admin'])->group(function () {
         Route::get('/admin/applications', [ApplicantApplicationController::class, 'getAllApplications']);
-        Route::post('/applications/{id}/status', [ApplicantApplicationController::class, 'addStatus']);        Route::get('/admin/statistics', [ApplicantApplicationController::class, 'getStatistics']);
+        Route::post('/admin/applications/{id}/status', [ApplicantApplicationController::class, 'addStatus']);
+        Route::get('/admin/statistics', [ApplicantApplicationController::class, 'getStatistics']);
         Route::delete('/admin/applications/{id}', [ApplicantApplicationController::class, 'destroy']);
     });
 });

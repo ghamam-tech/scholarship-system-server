@@ -24,13 +24,13 @@ Route::get('scholarships/universities/by-countries', [ScholarshipController::cla
 // Admin-only routes - require authentication and admin role
 Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     // Admin can view ALL scholarships (including expired/hidden ones)
-    Route::get('scholarships/admin/all', [ScholarshipController::class, 'adminIndex']);
-    Route::get('scholarships/{scholarship}/admin', [ScholarshipController::class, 'adminShow']);
+    Route::get('admin/scholarships/all', [ScholarshipController::class, 'adminIndex']);
+    Route::get('admin/scholarships/{scholarship}', [ScholarshipController::class, 'adminShow']);
 
     // CRUD operations for scholarships
-    Route::post('scholarships', [ScholarshipController::class, 'store']);
-    Route::match(['put', 'patch'], 'scholarships/{scholarship}', [ScholarshipController::class, 'update']);
-    Route::delete('scholarships/{scholarship}', [ScholarshipController::class, 'destroy']);
+    Route::post('admin/scholarships', [ScholarshipController::class, 'store']);
+    Route::match(['put', 'patch'], 'admin/scholarships/{scholarship}', [ScholarshipController::class, 'update']);
+    Route::delete('admin/scholarships/{scholarship}', [ScholarshipController::class, 'destroy']);
 
     // Debug route for testing authentication
     Route::get('scholarships/debug/user', [ScholarshipController::class, 'debugUser']);

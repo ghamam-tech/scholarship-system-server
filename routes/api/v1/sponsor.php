@@ -47,12 +47,11 @@ Route::middleware(['auth:sanctum', 'role:sponsor'])
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth:sanctum', 'role:admin'])
-    ->prefix('admin')
     ->group(function () {
-        Route::get('sponsors', [SponsorController::class, 'index']); // Now shows ALL sponsors
-        Route::post('sponsors', [SponsorController::class, 'store']);
-        Route::match(['put', 'patch'], 'sponsors/{sponsor}', [SponsorController::class, 'update']);
-        Route::delete('sponsors/{sponsor}', [SponsorController::class, 'destroy']);
+        Route::get('admin/sponsors', [SponsorController::class, 'index']); // Now shows ALL sponsors
+        Route::post('admin/sponsors', [SponsorController::class, 'store']);
+        Route::match(['put', 'patch'], 'admin/sponsors/{sponsor}', [SponsorController::class, 'update']);
+        Route::delete('admin/sponsors/{sponsor}', [SponsorController::class, 'destroy']);
     });
 
 

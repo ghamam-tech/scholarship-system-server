@@ -30,14 +30,58 @@ class ScholarshipController extends Controller
 
         $scholarships = $query->orderBy('created_at', 'desc')->get();
 
+        // Transform data for public users (non-admin)
+        if (!$isAdmin) {
+            $transformedScholarships = $scholarships->map(function ($scholarship) {
+                return [
+                    'scholarship_id' => $scholarship->scholarship_id,
+                    'scholarship_name' => $scholarship->scholarship_name,
+                    'scholarship_type' => $scholarship->scholarship_type,
+                    'allowed_program' => $scholarship->allowed_program,
+                    'closing_date' => $scholarship->closing_date,
+                    'sponsor_id' => $scholarship->sponsor_id,
+                    'sponsor_name' => $scholarship->sponsor->name ?? null,
+                    'countries' => $scholarship->countries->map(function ($country) {
+                        return [
+                            'country_id' => $country->country_id,
+                            'country_name' => $country->country_name,
+                        ];
+                    }),
+                    'universities' => $scholarship->universities->map(function ($university) {
+                        return [
+                            'university_id' => $university->university_id,
+                            'university_name' => $university->university_name,
+                        ];
+                    }),
+                    'status' => [
+                        'is_active' => $scholarship->is_active,
+                        'is_hided' => $scholarship->is_hided,
+                        'is_expired' => $scholarship->closing_date ? $scholarship->closing_date <= now() : false,
+                    ]
+                ];
+            });
+
+            return response()->json([
+                'data' => $transformedScholarships,
+                'meta' => [
+                    'total' => $transformedScholarships->count(),
+                    'user_role' => 'guest',
+                    'is_admin' => false,
+                    'user_id' => null,
+                    'filters_applied' => ['is_active=true', 'is_hided=false', 'closing_date>now']
+                ]
+            ]);
+        }
+
+        // Admin users get full data
         return response()->json([
             'data' => $scholarships,
             'meta' => [
                 'total' => $scholarships->count(),
-                'user_role' => $user ? $user->role->value : 'guest',
-                'is_admin' => $isAdmin,
-                'user_id' => $user ? $user->user_id : null,
-                'filters_applied' => !$isAdmin ? ['is_active=true', 'is_hided=false', 'closing_date>now'] : []
+                'user_role' => $user->role->value,
+                'is_admin' => true,
+                'user_id' => $user->user_id,
+                'filters_applied' => []
             ]
         ]);
     }
@@ -55,12 +99,60 @@ class ScholarshipController extends Controller
         }
 
         $scholarship->load(['sponsor', 'countries', 'universities']);
+
+        // Transform data for public users (non-admin)
+        if (!$isAdmin) {
+            $transformedScholarship = [
+                'scholarship_id' => $scholarship->scholarship_id,
+                'scholarship_name' => $scholarship->scholarship_name,
+                'scholarship_type' => $scholarship->scholarship_type,
+                'allowed_program' => $scholarship->allowed_program,
+                'total_beneficiaries' => $scholarship->total_beneficiaries,
+                'opening_date' => $scholarship->opening_date,
+                'closing_date' => $scholarship->closing_date,
+                'description' => $scholarship->description,
+                'is_active' => $scholarship->is_active,
+                'is_hided' => $scholarship->is_hided,
+                'sponsor' => $scholarship->sponsor ? [
+                    'sponsor_id' => $scholarship->sponsor->sponsor_id,
+                    'sponsor_name' => $scholarship->sponsor->name,
+
+                ] : null,
+                'countries' => $scholarship->countries->map(function ($country) {
+                    return [
+                        'country_id' => $country->country_id,
+                        'country_name' => $country->country_name,
+                        'country_code' => $country->country_code,
+                        // Excluding is_active as requested
+                    ];
+                }),
+                'universities' => $scholarship->universities->map(function ($university) {
+                    return [
+                        'university_id' => $university->university_id,
+                        'university_name' => $university->university_name,
+                        // Excluding is_active, city, created_at, updated_at as requested
+                    ];
+                }),
+            ];
+
+            return response()->json([
+                'data' => $transformedScholarship,
+                'meta' => [
+                    'user_role' => 'guest',
+                    'is_admin' => false,
+                    'user_id' => null,
+                    'note' => 'Public view - filtered data excluding specified fields'
+                ]
+            ]);
+        }
+
+        // Admin users get full data
         return response()->json([
             'data' => $scholarship,
             'meta' => [
-                'user_role' => $user ? $user->role->value : 'guest',
-                'is_admin' => $isAdmin,
-                'user_id' => $user ? $user->user_id : null
+                'user_role' => $user->role->value,
+                'is_admin' => true,
+                'user_id' => $user->user_id
             ]
         ]);
     }
@@ -201,19 +293,39 @@ class ScholarshipController extends Controller
         $user = $request->user();
 
         // This method is only accessible to admins (protected by middleware)
-        $scholarships = Scholarship::with(['sponsor', 'countries', 'universities'])
+        $scholarships = Scholarship::with(['sponsor', 'countries'])
             ->orderBy('created_at', 'desc')
             ->get();
 
+        // Transform data to return only required fields
+        $transformedScholarships = $scholarships->map(function ($scholarship) {
+            return [
+                'scholarship_id' => $scholarship->scholarship_id,
+                'sponsor_id' => $scholarship->sponsor_id,
+                'sponsor_name' => $scholarship->sponsor->name ?? null,
+                'scholarship_type' => $scholarship->scholarship_type,
+                'countries' => $scholarship->countries->map(function ($country) {
+                    return [
+                        'country_code' => $country->country_code,
+                        'country_name' => $country->country_name,
+                    ];
+                }),
+                'status' => [
+                    'is_active' => $scholarship->is_active,
+                    'is_hided' => $scholarship->is_hided,
+                    'is_expired' => $scholarship->closing_date ? $scholarship->closing_date <= now() : false,
+                ]
+            ];
+        });
+
         return response()->json([
-            'data' => $scholarships,
+            'data' => $transformedScholarships,
             'meta' => [
-                'total' => $scholarships->count(),
+                'total' => $transformedScholarships->count(),
                 'user_role' => $user->role->value,
                 'is_admin' => true,
                 'user_id' => $user->user_id,
-                'filters_applied' => [], // No filters for admin
-                'note' => 'Admin view - shows ALL scholarships including expired and hidden ones'
+                'note' => 'Admin view - limited data for scholarship listing'
             ]
         ]);
     }
@@ -225,13 +337,52 @@ class ScholarshipController extends Controller
         // Admin can see ANY scholarship
         $scholarship->load(['sponsor', 'countries', 'universities']);
 
+        // Transform data to exclude specified fields
+        $transformedScholarship = [
+            'scholarship_id' => $scholarship->scholarship_id,
+            'scholarship_name' => $scholarship->scholarship_name,
+            'scholarship_type' => $scholarship->scholarship_type,
+            'allowed_program' => $scholarship->allowed_program,
+            'total_beneficiaries' => $scholarship->total_beneficiaries,
+            'opening_date' => $scholarship->opening_date,
+            'closing_date' => $scholarship->closing_date,
+            'description' => $scholarship->description,
+            'is_active' => $scholarship->is_active,
+            'is_hided' => $scholarship->is_hided,
+            'sponsor_id' => $scholarship->sponsor_id,
+            'sponsor' => $scholarship->sponsor ? [
+                'sponsor_id' => $scholarship->sponsor->sponsor_id,
+                'sponsor_name' => $scholarship->sponsor->name,
+                'sponsor_type' => $scholarship->sponsor->sponsor_type,
+                'contact_email' => $scholarship->sponsor->contact_email,
+                'contact_phone' => $scholarship->sponsor->contact_phone,
+                'website' => $scholarship->sponsor->website,
+                'description' => $scholarship->sponsor->description,
+            ] : null,
+            'countries' => $scholarship->countries->map(function ($country) {
+                return [
+                    'country_id' => $country->country_id,
+                    'country_name' => $country->country_name,
+                    'country_code' => $country->country_code,
+                    // Excluding is_active as requested
+                ];
+            }),
+            'universities' => $scholarship->universities->map(function ($university) {
+                return [
+                    'university_id' => $university->university_id,
+                    'university_name' => $university->university_name,
+                    // Excluding is_active, city, created_at, updated_at as requested
+                ];
+            }),
+        ];
+
         return response()->json([
-            'data' => $scholarship,
+            'data' => $transformedScholarship,
             'meta' => [
                 'user_role' => $user->role->value,
                 'is_admin' => true,
                 'user_id' => $user->user_id,
-                'note' => 'Admin view - can see any scholarship regardless of status'
+                'note' => 'Admin view - full data excluding specified fields'
             ]
         ]);
     }
