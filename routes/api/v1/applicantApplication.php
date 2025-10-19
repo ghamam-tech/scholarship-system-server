@@ -18,7 +18,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Application Submission (after profile completion)
     Route::post('/applications', [ApplicantApplicationController::class, 'store']);
-     Route::get('/applications', [ApplicantApplicationController::class, 'index']);
+    Route::get('/applications', [ApplicantApplicationController::class, 'index']);
     Route::get('/applications/{id}', [ApplicantApplicationController::class, 'show']);
     Route::put('/applications/{id}/program-details', [ApplicantApplicationController::class, 'updateProgramDetails']);
 
