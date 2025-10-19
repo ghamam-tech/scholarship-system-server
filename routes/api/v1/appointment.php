@@ -24,8 +24,20 @@ Route::middleware(['auth:sanctum', 'role:applicant'])->group(function () {
     // Get my booked appointment
     Route::get('appointments/my-appointment', [AppointmentController::class, 'getMyAppointment']);
 
+    // Get all my appointments (including past ones)
+    Route::get('appointments/my-all-appointments', [AppointmentController::class, 'getMyAllAppointments']);
+
     // Cancel my appointment
     Route::post('appointments/{appointment}/cancel', [AppointmentController::class, 'cancelAppointment']);
+});
+
+// Common routes for all authenticated users
+Route::middleware(['auth:sanctum'])->group(function () {
+    // Set user timezone
+    Route::post('timezone', [AppointmentController::class, 'setTimezone']);
+
+    // Auto-detect user timezone
+    Route::post('timezone/auto-detect', [AppointmentController::class, 'autoDetectTimezone']);
 });
 
 // Admin routes - require authentication and admin role
@@ -33,7 +45,16 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     // Get all appointments
     Route::get('admin/appointments', [AppointmentController::class, 'getAllAppointments']);
 
-    // Create new appointment
+    // Get appointments by specific date
+    Route::get('admin/appointments/date/{date}', [AppointmentController::class, 'getAppointmentsByDate']);
+
+    // Generate multiple appointments (bulk creation)
+    Route::post('admin/appointments/generate', [AppointmentController::class, 'generateAppointments']);
+
+    // Add custom single appointment
+    Route::post('admin/appointments/custom', [AppointmentController::class, 'addCustomAppointment']);
+
+    // Create new appointment (legacy method)
     Route::post('admin/appointments', [AppointmentController::class, 'createAppointment']);
 
     // Update appointment
