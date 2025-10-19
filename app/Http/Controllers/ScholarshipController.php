@@ -301,6 +301,7 @@ class ScholarshipController extends Controller
         $transformedScholarships = $scholarships->map(function ($scholarship) {
             return [
                 'scholarship_id' => $scholarship->scholarship_id,
+                'scholarship_name' => $scholarship->scholarship_name,
                 'sponsor_id' => $scholarship->sponsor_id,
                 'sponsor_name' => $scholarship->sponsor->name ?? null,
                 'scholarship_type' => $scholarship->scholarship_type,
