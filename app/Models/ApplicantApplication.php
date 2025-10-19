@@ -51,7 +51,7 @@ class ApplicantApplication extends Model
     public function currentStatus()
     {
         return $this->hasOne(ApplicantApplicationStatus::class, 'application_id', 'application_id')
-            ->latest('applicationStatus_id');
+            ->latest('date');
     }
 
     // Helper methods

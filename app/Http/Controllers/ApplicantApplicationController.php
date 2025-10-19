@@ -7,7 +7,9 @@ use App\Models\ApplicantApplicationStatus;
 use App\Models\Qualification;
 use App\Models\Applicant;
 use App\Models\Scholarship;
+use App\Models\Appointment;
 use App\Enums\ApplicationStatus;
+use App\Enums\UserRole;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -584,5 +586,496 @@ class ApplicantApplicationController extends Controller
         }
 
         return $scholarshipIds;
+    }
+
+    /**
+     * Get the latest status for an application
+     */
+    private function getLatestStatus($application)
+    {
+        return $application->statuses()
+            ->orderBy('date', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->first();
+    }
+
+    /**
+     * Get all submitted applications ordered by enrollment status
+     * Priority: enrolled -> rejected -> others
+     */
+    public function submittedApplications(Request $request)
+    {
+        $user = $request->user();
+
+        // Check if user is admin
+        if (!$user || $user->role !== UserRole::ADMIN) {
+            return response()->json(['message' => 'Only admins can view submitted applications'], 403);
+        }
+
+        $applications = ApplicantApplication::with([
+            'applicant.user',
+            'scholarship',
+            'scholarship.countries',
+            'currentStatus' => function ($query) {
+                $query->latest('date');
+            }
+        ])
+            ->orderByRaw("
+            CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM applicant_application_statuses aps 
+                    WHERE aps.application_id = applicant_applications.application_id 
+                    AND aps.status_name = 'enrolled'
+                    ORDER BY aps.date DESC 
+                    LIMIT 1
+                ) THEN 1
+                WHEN EXISTS (
+                    SELECT 1 FROM applicant_application_statuses aps 
+                    WHERE aps.application_id = applicant_applications.application_id 
+                    AND aps.status_name = 'rejected'
+                    ORDER BY aps.date DESC 
+                    LIMIT 1
+                ) THEN 2
+                ELSE 3
+            END
+        ")
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($application) {
+                $applicant = $application->applicant;
+                $scholarship = $application->scholarship;
+
+                // Safe access to relationships
+                $user = $applicant ? $applicant->user : null;
+                $countries = $scholarship ? $scholarship->countries : collect();
+
+                // Get first country (or null if no countries)
+                $firstCountry = $countries->first();
+
+                // Format CGPA
+                $cgpa = $application->cgpa;
+                $cgpaOutOf = $application->cgpa_out_of;
+                $cgpaFormatted = $cgpa && $cgpaOutOf ? "{$cgpa}/{$cgpaOutOf}" : null;
+
+                // Get the latest status
+                $latestStatus = $this->getLatestStatus($application);
+
+                return [
+                    'application_id' => $application->application_id,
+                    'applicant_id' => $applicant ? $applicant->applicant_id : null,
+                    'applicant_name' => $applicant ? $applicant->ar_name : 'N/A',
+                    'scholarship_id' => $scholarship ? $scholarship->scholarship_id : null,
+                    'scholarship_name' => $scholarship ? $scholarship->scholarship_name : 'N/A',
+                    'nationality' => $applicant ? $applicant->nationality : 'N/A',
+                    'country_id' => $firstCountry ? $firstCountry->country_id : null,
+                    'country_name' => $firstCountry ? $firstCountry->country_name : 'N/A',
+                    'cgpa' => $cgpaFormatted,
+                    'program_type' => $scholarship ? ($scholarship->scholarship_type ?? 'N/A') : 'N/A',
+                    'current_status' => $latestStatus ? $latestStatus->status_name : 'N/A',
+                    'status_date' => $latestStatus ? $latestStatus->date : null,
+                    'status_comment' => $latestStatus ? $latestStatus->comment : null,
+                ];
+            });
+
+        // Count applications by status
+        $statusCounts = $applications->groupBy('current_status')->map->count();
+
+        return response()->json([
+            'data' => $applications,
+            'meta' => [
+                'total' => $applications->count(),
+                'status_counts' => [
+                    'submitted' => $statusCounts->get('submitted', 0),
+                    'first_approval' => $statusCounts->get('first_approval', 0),
+                    'meeting_scheduled' => $statusCounts->get('meeting_scheduled', 0),
+                    'second_approval' => $statusCounts->get('second_approval', 0),
+                    'final_approval' => $statusCounts->get('final_approval', 0),
+                    'enrolled' => $statusCounts->get('enrolled', 0),
+                    'rejected' => $statusCounts->get('rejected', 0),
+                    'other' => $statusCounts->get('N/A', 0),
+                ],
+                'enrolled_count' => $statusCounts->get('enrolled', 0),
+                'rejected_count' => $statusCounts->get('rejected', 0),
+            ]
+        ]);
+    }
+
+    /**
+     * Get all applications with their current status (admin only)
+     */
+    public function getAllApplicationsWithStatus(Request $request)
+    {
+        $user = $request->user();
+
+        // Check if user is admin
+        if (!$user || $user->role !== UserRole::ADMIN) {
+            return response()->json(['message' => 'Only admins can view all applications'], 403);
+        }
+
+        $applications = ApplicantApplication::with([
+            'applicant.user',
+            'scholarship',
+            'scholarship.countries',
+            'currentStatus' => function ($query) {
+                $query->latest('date');
+            }
+        ])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($application) {
+                $applicant = $application->applicant;
+                $scholarship = $application->scholarship;
+
+                // Safe access to relationships
+                $user = $applicant ? $applicant->user : null;
+                $countries = $scholarship ? $scholarship->countries : collect();
+
+                // Get first country (or null if no countries)
+                $firstCountry = $countries->first();
+
+                // Format CGPA
+                $cgpa = $application->cgpa;
+                $cgpaOutOf = $application->cgpa_out_of;
+                $cgpaFormatted = $cgpa && $cgpaOutOf ? "{$cgpa}/{$cgpaOutOf}" : null;
+
+                // Get the latest status
+                $latestStatus = $this->getLatestStatus($application);
+
+                return [
+                    'application_id' => $application->application_id,
+                    'applicant_id' => $applicant ? $applicant->applicant_id : null,
+                    'applicant_name' => $applicant ? $applicant->ar_name : 'N/A',
+                    'scholarship_id' => $scholarship ? $scholarship->scholarship_id : null,
+                    'scholarship_name' => $scholarship ? $scholarship->scholarship_name : 'N/A',
+                    'nationality' => $applicant ? $applicant->nationality : 'N/A',
+                    'country_id' => $firstCountry ? $firstCountry->country_id : null,
+                    'country_name' => $firstCountry ? $firstCountry->country_name : 'N/A',
+                    'cgpa' => $cgpaFormatted,
+                    'program_type' => $scholarship ? ($scholarship->scholarship_type ?? 'N/A') : 'N/A',
+                    'current_status' => $latestStatus ? $latestStatus->status_name : 'N/A',
+                    'status_date' => $latestStatus ? $latestStatus->date : null,
+                    'status_comment' => $latestStatus ? $latestStatus->comment : null,
+                ];
+            });
+
+        // Count applications by status
+        $statusCounts = $applications->groupBy('current_status')->map->count();
+
+        return response()->json([
+            'data' => $applications,
+            'meta' => [
+                'total' => $applications->count(),
+                'status_counts' => [
+                    'submitted' => $statusCounts->get('submitted', 0),
+                    'first_approval' => $statusCounts->get('first_approval', 0),
+                    'meeting_scheduled' => $statusCounts->get('meeting_scheduled', 0),
+                    'second_approval' => $statusCounts->get('second_approval', 0),
+                    'final_approval' => $statusCounts->get('final_approval', 0),
+                    'enrolled' => $statusCounts->get('enrolled', 0),
+                    'rejected' => $statusCounts->get('rejected', 0),
+                    'other' => $statusCounts->get('N/A', 0),
+                ],
+            ]
+        ]);
+    }
+
+    /**
+     * Get applications with first_approval and meeting_scheduled status
+     */
+    public function firstApproval(Request $request)
+    {
+        $user = $request->user();
+
+        // Check if user is admin
+        if (!$user || $user->role !== UserRole::ADMIN) {
+            return response()->json(['message' => 'Only admins can view first approval applications'], 403);
+        }
+
+        $applications = ApplicantApplication::with([
+            'applicant.user',
+            'scholarship',
+            'currentStatus' => function ($query) {
+                $query->latest('date');
+            }
+        ])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->filter(function ($application) {
+                // Get the latest status for this application
+                $latestStatus = $this->getLatestStatus($application);
+                return $latestStatus && in_array($latestStatus->status_name, ['first_approval', 'meeting_scheduled']);
+            })
+            ->map(function ($application) use ($user) {
+                $applicant = $application->applicant;
+                $scholarship = $application->scholarship;
+
+                // Safe access to relationships
+                $applicantUser = $applicant ? $applicant->user : null;
+
+                // Format CGPA
+                $cgpa = $application->cgpa;
+                $cgpaOutOf = $application->cgpa_out_of;
+                $cgpaFormatted = $cgpa && $cgpaOutOf ? "{$cgpa}/{$cgpaOutOf}" : null;
+
+                // Get the latest status
+                $latestStatus = $this->getLatestStatus($application);
+
+                // Get meeting status (appointment info)
+                $meetingStatus = 'not set';
+                if ($application->currentStatus && $application->currentStatus->status_name === 'meeting_scheduled' && $applicantUser) {
+                    $appointment = Appointment::where('user_id', $applicantUser->user_id)
+                        ->where('status', 'booked')
+                        ->where('starts_at_utc', '>', now())
+                        ->first();
+
+                    if ($appointment) {
+                        // Convert to admin's timezone (or default to UTC)
+                        $adminTimezone = $user->timezone ?? 'UTC';
+                        $startsAtLocal = $appointment->starts_at_utc->setTimezone($adminTimezone);
+                        $meetingStatus = $startsAtLocal->format('Y-m-d g:i A');
+                    }
+                }
+
+                return [
+                    'application_id' => $application->application_id,
+                    'applicant_id' => $applicant ? $applicant->applicant_id : null,
+                    'applicant_name' => $applicant ? $applicant->ar_name : 'N/A',
+                    'scholarship_id' => $scholarship ? $scholarship->scholarship_id : null,
+                    'scholarship_name' => $scholarship ? $scholarship->scholarship_name : 'N/A',
+                    'cgpa' => $cgpaFormatted,
+                    'program_type' => $scholarship ? ($scholarship->scholarship_type ?? 'N/A') : 'N/A',
+                    'current_status' => $latestStatus ? $latestStatus->status_name : 'N/A',
+                    'status_date' => $latestStatus ? $latestStatus->date : null,
+                    'status_comment' => $latestStatus ? $latestStatus->comment : null,
+                    'meeting_status' => $meetingStatus,
+                ];
+            });
+
+        // Count applications by status from the filtered data
+        $statusCounts = $applications->groupBy('current_status')->map->count();
+
+        return response()->json([
+            'data' => $applications,
+            'meta' => [
+                'total' => $applications->count(),
+                'first_approval_count' => $statusCounts->get('first_approval', 0),
+                'meeting_scheduled_count' => $statusCounts->get('meeting_scheduled', 0),
+            ]
+        ]);
+    }
+    /**
+     * Get applicant status including profile completion, first approval, and appointment
+     */
+    public function getApplicantStatus(Request $request)
+    {
+        $user = $request->user();
+
+        // Check if user is an applicant
+        if (!$user || $user->role !== \App\Enums\UserRole::APPLICANT) {
+            return response()->json(['message' => 'Only applicants can view their status'], 403);
+        }
+
+        $applicant = $user->applicant;
+        if (!$applicant) {
+            return response()->json(['message' => 'Applicant profile not found'], 404);
+        }
+
+        // Debug: Log user and applicant info
+        \Illuminate\Support\Facades\Log::info('User ID: ' . $user->user_id . ', Applicant ID: ' . ($applicant ? $applicant->applicant_id : 'null'));
+
+        // 1. Check if profile is completed
+        $isCompleted = $applicant->is_completed ?? false;
+
+        // 2. Check if applicant has active application
+        $hasActiveApplication = false;
+        if ($isCompleted) {
+            // Get the latest status for any application
+            $latestStatus = $applicant->applications()
+                ->with(['statuses' => function ($query) {
+                    $query->orderBy('date', 'desc')->orderBy('created_at', 'desc');
+                }])
+                ->get()
+                ->flatMap(function ($application) {
+                    return $application->statuses;
+                })
+                ->sortByDesc('date')
+                ->sortByDesc('created_at')
+                ->first();
+
+            // Check if the latest status is active (only first_approval is considered active)
+            if ($latestStatus && $latestStatus->status_name === 'first_approval') {
+                $hasActiveApplication = true;
+            }
+        }
+
+        // 3. Check if applicant has first approval (reuse the latestStatus from above)
+        $haveFirstApproval = false;
+        $appointment = null;
+
+        if ($isCompleted && $latestStatus) {
+            // Debug: Check what status we actually have
+            \Illuminate\Support\Facades\Log::info('Latest status found: ' . $latestStatus->status_name);
+
+            if (in_array($latestStatus->status_name, ['first_approval', 'meeting_scheduled'])) {
+                $haveFirstApproval = true;
+            }
+
+            // 4. Check appointments based on status
+            $appointment = null;
+
+            if ($haveFirstApproval) {
+                // Check for booked appointment first
+                $bookedAppointment = \App\Models\Appointment::where('user_id', $user->user_id)
+                    ->where('status', 'booked')
+                    ->where('starts_at_utc', '>', now())
+                    ->first();
+
+                if ($bookedAppointment) {
+                    // User has a booked appointment
+                    $appointment = $bookedAppointment;
+                } else {
+                    // User has first approval but no booked appointment, return available appointments
+                    $availableAppointments = \App\Models\Appointment::where('status', 'available')
+                        ->where('starts_at_utc', '>', now())
+                        ->orderBy('starts_at_utc')
+                        ->get();
+
+                    if ($availableAppointments->count() > 0) {
+                        // Get applicant's timezone for display
+                        $applicantTimezone = $user->timezone ?? 'UTC';
+
+                        $appointment = [
+                            'type' => 'available_appointments',
+                            'count' => $availableAppointments->count(),
+                            'appointments' => $availableAppointments->map(function ($apt) use ($applicantTimezone) {
+                                $startsAtLocal = $apt->starts_at_utc->setTimezone($applicantTimezone);
+                                $endsAtLocal = $apt->ends_at_utc->setTimezone($applicantTimezone);
+
+                                return [
+                                    'appointment_id' => $apt->appointment_id,
+                                    'starts_at_utc' => $apt->starts_at_utc,
+                                    'ends_at_utc' => $apt->ends_at_utc,
+                                    'starts_at_local' => $startsAtLocal->format('Y-m-d H:i:s'),
+                                    'ends_at_local' => $endsAtLocal->format('Y-m-d H:i:s'),
+                                    'starts_at_display' => $startsAtLocal->format('M j, Y g:i A'),
+                                    'ends_at_display' => $endsAtLocal->format('M j, Y g:i A'),
+                                    'duration_min' => $apt->duration_min,
+                                    'owner_timezone' => $apt->owner_timezone,
+                                    'applicant_timezone' => $applicantTimezone,
+                                    'meeting_url' => $apt->meeting_url,
+                                    'status' => $apt->status,
+                                ];
+                            })->toArray()
+                        ];
+                    }
+                }
+            }
+
+            // Debug: Check appointment search
+            \Illuminate\Support\Facades\Log::info('Looking for appointment for user_id: ' . $user->user_id);
+            \Illuminate\Support\Facades\Log::info('Found appointment: ' . ($appointment ? 'Yes' : 'No'));
+
+            // Format booked appointment if found
+            if ($appointment && !isset($appointment['type'])) {
+                // Get applicant's timezone for display
+                $applicantTimezone = $user->timezone ?? 'UTC';
+                $startsAtLocal = $appointment->starts_at_utc->setTimezone($applicantTimezone);
+                $endsAtLocal = $appointment->ends_at_utc->setTimezone($applicantTimezone);
+
+                $appointment = [
+                    'type' => 'booked_appointment',
+                    'appointment_id' => $appointment->appointment_id,
+                    'starts_at_utc' => $appointment->starts_at_utc,
+                    'ends_at_utc' => $appointment->ends_at_utc,
+                    'starts_at_local' => $startsAtLocal->format('Y-m-d H:i:s'),
+                    'ends_at_local' => $endsAtLocal->format('Y-m-d H:i:s'),
+                    'starts_at_display' => $startsAtLocal->format('M j, Y g:i A'),
+                    'ends_at_display' => $endsAtLocal->format('M j, Y g:i A'),
+                    'duration_min' => $appointment->duration_min,
+                    'owner_timezone' => $appointment->owner_timezone,
+                    'applicant_timezone' => $applicantTimezone,
+                    'meeting_url' => $appointment->meeting_url,
+                    'status' => $appointment->status,
+                    'booked_at' => $appointment->booked_at,
+                ];
+            }
+        }
+
+        return response()->json([
+            'is_completed' => $isCompleted,
+            'has_active_application' => $hasActiveApplication,
+            'have_first_approval' => $haveFirstApproval,
+            'appointment' => $appointment,
+        ]);
+    }
+    /**
+     * Get applications with second_approval status
+     */
+    public function secondApproval(Request $request)
+    {
+        $user = $request->user();
+
+        // Check if user is admin
+        if (!$user || $user->role !== UserRole::ADMIN) {
+            return response()->json(['message' => 'Only admins can view second approval applications'], 403);
+        }
+
+        $applications = ApplicantApplication::with([
+            'applicant.user',
+            'scholarship',
+            'currentStatus' => function ($query) {
+                $query->latest('date');
+            },
+            'statuses' => function ($query) {
+                $query->orderBy('date', 'desc');
+            }
+        ])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->filter(function ($application) {
+                // Get the latest status for this application
+                $latestStatus = $this->getLatestStatus($application);
+                return $latestStatus && $latestStatus->status_name === 'second_approval';
+            })
+            ->map(function ($application) {
+                $applicant = $application->applicant;
+                $scholarship = $application->scholarship;
+
+                // Safe access to relationships
+                $applicantUser = $applicant ? $applicant->user : null;
+
+                // Get the latest status
+                $latestStatus = $this->getLatestStatus($application);
+
+                // Get comment from previous approval (first_approval)
+                $previousApprovalComment = null;
+                $firstApprovalStatus = $application->statuses
+                    ->where('status_name', 'first_approval')
+                    ->sortByDesc('date')
+                    ->first();
+
+                if ($firstApprovalStatus) {
+                    $previousApprovalComment = $firstApprovalStatus->comment;
+                }
+
+                return [
+                    'application_id' => $application->application_id,
+                    'applicant_id' => $applicant ? $applicant->applicant_id : null,
+                    'applicant_name' => $applicant ? $applicant->ar_name : 'N/A',
+                    'scholarship_id' => $scholarship ? $scholarship->scholarship_id : null,
+                    'scholarship_name' => $scholarship ? $scholarship->scholarship_name : 'N/A',
+                    'current_status' => $latestStatus ? $latestStatus->status_name : 'N/A',
+                    'status_date' => $latestStatus ? $latestStatus->date : null,
+                    'status_comment' => $latestStatus ? $latestStatus->comment : null,
+                    'comment_from_previous_approval' => $previousApprovalComment,
+                ];
+            });
+
+        return response()->json([
+            'data' => $applications,
+            'meta' => [
+                'total' => $applications->count(),
+            ]
+        ]);
     }
 }

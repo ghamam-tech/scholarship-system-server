@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Models\ApplicantApplication;
+use App\Models\ApplicantApplicationStatus;
 use App\Enums\ApplicationStatus;
 use App\Enums\UserRole;
 use Illuminate\Http\Request;
@@ -170,7 +171,8 @@ class AppointmentController extends Controller
             ]);
 
             // Update application status to meeting_scheduled
-            $application->statuses()->create([
+            ApplicantApplicationStatus::create([
+                'application_id' => $application->application_id,
                 'status_name' => ApplicationStatus::MEETING_SCHEDULED->value,
                 'date' => now(),
                 'comment' => 'Appointment booked for meeting',
@@ -376,7 +378,8 @@ class AppointmentController extends Controller
                 ->first();
 
             if ($application) {
-                $application->statuses()->create([
+                ApplicantApplicationStatus::create([
+                    'application_id' => $application->application_id,
                     'status_name' => ApplicationStatus::FIRST_APPROVAL->value,
                     'date' => now(),
                     'comment' => 'Appointment canceled, back to first approval',

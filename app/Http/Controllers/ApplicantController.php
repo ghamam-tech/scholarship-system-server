@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Applicant;
 use App\Models\Qualification;
+use App\Enums\UserRole;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
@@ -434,5 +435,151 @@ class ApplicantController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Get applicant status including profile completion, first approval, and appointment
+     */
+    public function getApplicantStatus(Request $request)
+    {
+        $user = $request->user();
+
+        // Check if user is an applicant
+        if (!$user || $user->role !== UserRole::APPLICANT) {
+            return response()->json(['message' => 'Only applicants can view their status'], 403);
+        }
+
+        $applicant = $user->applicant;
+        if (!$applicant) {
+            return response()->json(['message' => 'Applicant profile not found'], 404);
+        }
+
+        // Debug: Log user and applicant info
+        Log::info('User ID: ' . $user->user_id . ', Applicant ID: ' . ($applicant ? $applicant->applicant_id : 'null'));
+
+        // 1. Check if profile is completed
+        $isCompleted = $applicant->is_completed ?? false;
+
+        // 2. Check application statuses
+        $haveFirstApproval = false;
+        $hasActiveApplication = false;
+        $appointment = null;
+
+        if ($isCompleted) {
+            // Get the latest status for any application
+            $latestStatus = $applicant->applications()
+                ->with(['statuses' => function ($query) {
+                    $query->orderBy('date', 'desc')->orderBy('created_at', 'desc');
+                }])
+                ->get()
+                ->flatMap(function ($application) {
+                    return $application->statuses;
+                })
+                ->sortByDesc('date')
+                ->sortByDesc('created_at')
+                ->first();
+
+            // Debug: Check what status we actually have
+            Log::info('Latest status found: ' . $latestStatus->status_name);
+
+            if ($latestStatus) {
+                // Check if current status is first_approval
+                if ($latestStatus->status_name === 'first_approval') {
+                    $haveFirstApproval = true;
+                }
+
+                // Check if has active application (enrolled, first_approval, meeting_scheduled, second_approval, final_approval)
+                if (in_array($latestStatus->status_name, ['enrolled', 'first_approval', 'meeting_scheduled', 'second_approval', 'final_approval'])) {
+                    $hasActiveApplication = true;
+                }
+            }
+
+            // 3. Check appointments based on status
+            $appointment = null;
+
+            if ($haveFirstApproval || ($latestStatus && $latestStatus->status_name === 'meeting_scheduled')) {
+                // Check for booked appointment first
+                $bookedAppointment = \App\Models\Appointment::where('user_id', $user->user_id)
+                    ->where('status', 'booked')
+                    ->where('starts_at_utc', '>', now())
+                    ->first();
+
+                if ($bookedAppointment) {
+                    // User has a booked appointment
+                    $appointment = $bookedAppointment;
+                } else {
+                    // User has first approval but no booked appointment, return available appointments
+                    $availableAppointments = \App\Models\Appointment::where('status', 'available')
+                        ->where('starts_at_utc', '>', now())
+                        ->orderBy('starts_at_utc')
+                        ->get();
+
+                    if ($availableAppointments->count() > 0) {
+                        // Get applicant's timezone for display
+                        $applicantTimezone = $user->timezone ?? 'UTC';
+
+                        $appointment = [
+                            'type' => 'available_appointments',
+                            'count' => $availableAppointments->count(),
+                            'appointments' => $availableAppointments->map(function ($apt) use ($applicantTimezone) {
+                                $startsAtLocal = $apt->starts_at_utc->setTimezone($applicantTimezone);
+                                $endsAtLocal = $apt->ends_at_utc->setTimezone($applicantTimezone);
+
+                                return [
+                                    'appointment_id' => $apt->appointment_id,
+                                    'starts_at_utc' => $apt->starts_at_utc,
+                                    'ends_at_utc' => $apt->ends_at_utc,
+                                    'starts_at_local' => $startsAtLocal->format('Y-m-d H:i:s'),
+                                    'ends_at_local' => $endsAtLocal->format('Y-m-d H:i:s'),
+                                    'starts_at_display' => $startsAtLocal->format('M j, Y g:i A'),
+                                    'ends_at_display' => $endsAtLocal->format('M j, Y g:i A'),
+                                    'duration_min' => $apt->duration_min,
+                                    'owner_timezone' => $apt->owner_timezone,
+                                    'applicant_timezone' => $applicantTimezone,
+                                    'meeting_url' => $apt->meeting_url,
+                                    'status' => $apt->status,
+                                ];
+                            })->toArray()
+                        ];
+                    }
+                }
+            }
+
+            // Debug: Check appointment search
+            Log::info('Looking for appointment for user_id: ' . $user->user_id);
+            Log::info('Found appointment: ' . ($appointment ? 'Yes' : 'No'));
+
+            // Format booked appointment if found
+            if ($appointment && !isset($appointment['type'])) {
+                // Get applicant's timezone for display
+                $applicantTimezone = $user->timezone ?? 'UTC';
+                $startsAtLocal = $appointment->starts_at_utc->setTimezone($applicantTimezone);
+                $endsAtLocal = $appointment->ends_at_utc->setTimezone($applicantTimezone);
+
+                $appointment = [
+                    'type' => 'booked_appointment',
+                    'appointment_id' => $appointment->appointment_id,
+                    'starts_at_utc' => $appointment->starts_at_utc,
+                    'ends_at_utc' => $appointment->ends_at_utc,
+                    'starts_at_local' => $startsAtLocal->format('Y-m-d H:i:s'),
+                    'ends_at_local' => $endsAtLocal->format('Y-m-d H:i:s'),
+                    'starts_at_display' => $startsAtLocal->format('M j, Y g:i A'),
+                    'ends_at_display' => $endsAtLocal->format('M j, Y g:i A'),
+                    'duration_min' => $appointment->duration_min,
+                    'owner_timezone' => $appointment->owner_timezone,
+                    'applicant_timezone' => $applicantTimezone,
+                    'meeting_url' => $appointment->meeting_url,
+                    'status' => $appointment->status,
+                    'booked_at' => $appointment->booked_at,
+                ];
+            }
+        }
+
+        return response()->json([
+            'is_completed' => $isCompleted,
+            'has_active_application' => $hasActiveApplication,
+            'have_first_approval' => $haveFirstApproval,
+            'appointment' => $appointment,
+        ]);
     }
 }
