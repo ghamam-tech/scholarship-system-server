@@ -480,9 +480,9 @@ class ApplicantController extends Controller
                 ->first();
 
             // Debug: Check what status we actually have
-            Log::info('Latest status found: ' . $latestStatus->status_name);
-
             if ($latestStatus) {
+                Log::info('Latest status found: ' . $latestStatus->status_name);
+
                 // Check if current status is first_approval
                 if ($latestStatus->status_name === 'first_approval') {
                     $haveFirstApproval = true;
@@ -492,6 +492,8 @@ class ApplicantController extends Controller
                 if (in_array($latestStatus->status_name, ['enrolled', 'first_approval', 'meeting_scheduled', 'second_approval', 'final_approval'])) {
                     $hasActiveApplication = true;
                 }
+            } else {
+                Log::info('No latest status found - applicant has no applications yet');
             }
 
             // 3. Check appointments based on status
