@@ -22,9 +22,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/applications', [ApplicantApplicationController::class, 'index']);
     Route::get('/applications/{id}', [ApplicantApplicationController::class, 'show']);
     Route::put('/applications/{id}/program-details', [ApplicantApplicationController::class, 'updateProgramDetails']);
-
+    
     // Admin routes
     Route::middleware(['role:admin'])->group(function () {
+        Route::get('/admin/applications/{applicationId}/details', [ApplicantApplicationController::class, 'getApplicationById']);
         Route::get('/admin/applications', [ApplicantApplicationController::class, 'getAllApplications']);
         Route::post('/admin/applications/{id}/status', [ApplicantApplicationController::class, 'addStatus']);
         Route::get('/admin/statistics', [ApplicantApplicationController::class, 'getStatistics']);

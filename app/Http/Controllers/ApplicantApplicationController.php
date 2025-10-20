@@ -1126,4 +1126,116 @@ class ApplicantApplicationController extends Controller
             ]
         ]);
     }
+
+    /**
+     * Get application by id with full details: applicant, qualifications, scholarship,
+     * full status trail, current status, and appointment info
+     */
+    public function getApplicationById(Request $request, $applicationId)
+    {
+        $application = ApplicantApplication::with([
+            'applicant.user',
+            'applicant.qualifications',
+            'scholarship',
+            'scholarship.countries',
+            'statuses' => function ($query) {
+                $query->orderBy('date', 'desc')->orderBy('created_at', 'desc');
+            },
+            'currentStatus'
+        ])->findOrFail($applicationId);
+
+        // Authorization: admin only
+        $user = $request->user();
+        if (!$user || $user->role->value !== 'admin') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Prepare appointment info (booked upcoming or available list if first-approved)
+        $appointmentInfo = null;
+        $latestStatus = $this->getLatestStatus($application);
+        $hasFirstApproval = $latestStatus && in_array($latestStatus->status_name, ['first_approval', 'meeting_scheduled']);
+
+        $applicantUser = optional($application->applicant)->user;
+        if ($hasFirstApproval && $applicantUser) {
+            $booked = Appointment::where('user_id', $applicantUser->user_id)
+                ->where('status', 'booked')
+                ->where('starts_at_utc', '>', now())
+                ->first();
+
+            if ($booked) {
+                $viewerTz = $user->timezone ?? 'UTC';
+                $startsAtLocal = $booked->starts_at_utc->setTimezone($viewerTz);
+                $endsAtLocal = $booked->ends_at_utc->setTimezone($viewerTz);
+
+                $appointmentInfo = [
+                    'type' => 'booked_appointment',
+                    'appointment_id' => $booked->appointment_id,
+                    'starts_at_utc' => $booked->starts_at_utc,
+                    'ends_at_utc' => $booked->ends_at_utc,
+                    'starts_at_local' => $startsAtLocal->format('Y-m-d H:i:s'),
+                    'ends_at_local' => $endsAtLocal->format('Y-m-d H:i:s'),
+                    'starts_at_display' => $startsAtLocal->format('M j, Y g:i A'),
+                    'ends_at_display' => $endsAtLocal->format('M j, Y g:i A'),
+                    'duration_min' => $booked->duration_min,
+                    'owner_timezone' => $booked->owner_timezone,
+                    'viewer_timezone' => $viewerTz,
+                    'meeting_url' => $booked->meeting_url,
+                    'status' => $booked->status,
+                    'booked_at' => $booked->booked_at,
+                ];
+            } else {
+                $available = Appointment::where('status', 'available')
+                    ->where('starts_at_utc', '>', now())
+                    ->orderBy('starts_at_utc')
+                    ->get();
+
+                if ($available->count() > 0) {
+                    $viewerTz = $user->timezone ?? 'UTC';
+                    $appointmentInfo = [
+                        'type' => 'available_appointments',
+                        'count' => $available->count(),
+                        'appointments' => $available->map(function ($apt) use ($viewerTz) {
+                            $startsAtLocal = $apt->starts_at_utc->setTimezone($viewerTz);
+                            $endsAtLocal = $apt->ends_at_utc->setTimezone($viewerTz);
+                            return [
+                                'appointment_id' => $apt->appointment_id,
+                                'starts_at_utc' => $apt->starts_at_utc,
+                                'ends_at_utc' => $apt->ends_at_utc,
+                                'starts_at_local' => $startsAtLocal->format('Y-m-d H:i:s'),
+                                'ends_at_local' => $endsAtLocal->format('Y-m-d H:i:s'),
+                                'starts_at_display' => $startsAtLocal->format('M j, Y g:i A'),
+                                'ends_at_display' => $endsAtLocal->format('M j, Y g:i A'),
+                                'duration_min' => $apt->duration_min,
+                                'owner_timezone' => $apt->owner_timezone,
+                                'viewer_timezone' => $viewerTz,
+                                'meeting_url' => $apt->meeting_url,
+                                'status' => $apt->status,
+                            ];
+                        })->toArray(),
+                    ];
+                }
+            }
+        }
+
+        // Compose response
+        return response()->json([
+            'application' => [
+                'application_id' => $application->application_id,
+                'applicant' => $application->applicant,
+                'qualifications' => optional($application->applicant)->qualifications ?? [],
+                'scholarship' => $application->scholarship,
+                'status_trail' => $application->statuses,
+                'current_status' => $application->currentStatus,
+                'cgpa' => $application->cgpa,
+                'cgpa_out_of' => $application->cgpa_out_of,
+                'country_name' => $application->country_name,
+                'university_name' => $application->university_name,
+                'specialization_1' => $application->specialization_1,
+                'specialization_2' => $application->specialization_2,
+                'specialization_3' => $application->specialization_3,
+                'offer_letter_file' => $application->offer_letter_file,
+            ],
+            'appointment' => $appointmentInfo,
+        ]);
+    }
 }
