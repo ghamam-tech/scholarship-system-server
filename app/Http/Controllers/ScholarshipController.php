@@ -128,6 +128,7 @@ class ScholarshipController extends Controller
                 }),
                 'universities' => $scholarship->universities->map(function ($university) {
                     return [
+                        'country_id' => $university->country_id,
                         'university_id' => $university->university_id,
                         'university_name' => $university->university_name,
                         // Excluding is_active, city, created_at, updated_at as requested
