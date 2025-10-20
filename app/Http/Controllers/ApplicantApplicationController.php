@@ -454,24 +454,6 @@ class ApplicantApplicationController extends Controller
         return response()->json($applications);
     }
 
-    /**
-     * Get all applications (Admin only)
-     */
-    public function getAllApplications(Request $request)
-    {
-        if ($request->user()->role->value !== 'admin') {
-            return response()->json(['message' => 'Forbidden. Insufficient permissions.'], 403);
-        }
-
-        $applications = ApplicantApplication::with([
-            'applicant.user',
-            'applicant.qualifications',
-            'scholarship',
-            'currentStatus'
-        ])->get();
-
-        return response()->json($applications);
-    }
 
     /**
      * Delete application (Admin only)
@@ -600,8 +582,7 @@ class ApplicantApplicationController extends Controller
     }
 
     /**
-     * Get all submitted applications ordered by enrollment status
-     * Priority: enrolled -> rejected -> others
+     * Get all enrolled applications only
      */
     public function submittedApplications(Request $request)
     {
@@ -620,25 +601,92 @@ class ApplicantApplicationController extends Controller
                 $query->latest('date');
             }
         ])
-            ->orderByRaw("
-            CASE 
-                WHEN EXISTS (
-                    SELECT 1 FROM applicant_application_statuses aps 
-                    WHERE aps.application_id = applicant_applications.application_id 
-                    AND aps.status_name = 'enrolled'
-                    ORDER BY aps.date DESC 
-                    LIMIT 1
-                ) THEN 1
-                WHEN EXISTS (
-                    SELECT 1 FROM applicant_application_statuses aps 
-                    WHERE aps.application_id = applicant_applications.application_id 
-                    AND aps.status_name = 'rejected'
-                    ORDER BY aps.date DESC 
-                    LIMIT 1
-                ) THEN 2
-                ELSE 3
-            END
-        ")
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->filter(function ($application) {
+                // Get the latest status for this application
+                $latestStatus = $this->getLatestStatus($application);
+                return $latestStatus && $latestStatus->status_name === 'enrolled';
+            })
+            ->map(function ($application) {
+                $applicant = $application->applicant;
+                $scholarship = $application->scholarship;
+
+                // Safe access to relationships
+                $user = $applicant ? $applicant->user : null;
+                $countries = $scholarship ? $scholarship->countries : collect();
+
+                // Get first country (or null if no countries)
+                $firstCountry = $countries->first();
+
+                // Format CGPA
+                $cgpa = $application->cgpa;
+                $cgpaOutOf = $application->cgpa_out_of;
+                $cgpaFormatted = $cgpa && $cgpaOutOf ? "{$cgpa}/{$cgpaOutOf}" : null;
+
+                // Get the latest status
+                $latestStatus = $this->getLatestStatus($application);
+
+                return [
+                    'application_id' => $application->application_id,
+                    'applicant_id' => $applicant ? $applicant->applicant_id : null,
+                    'applicant_name' => $applicant ? $applicant->ar_name : 'N/A',
+                    'scholarship_id' => $scholarship ? $scholarship->scholarship_id : null,
+                    'scholarship_name' => $scholarship ? $scholarship->scholarship_name : 'N/A',
+                    'nationality' => $applicant ? $applicant->nationality : 'N/A',
+                    'country_id' => $firstCountry ? $firstCountry->country_id : null,
+                    'country_name' => $firstCountry ? $firstCountry->country_name : 'N/A',
+                    'cgpa' => $cgpaFormatted,
+                    'program_type' => $scholarship ? ($scholarship->scholarship_type ?? 'N/A') : 'N/A',
+                    'current_status' => $latestStatus ? $latestStatus->status_name : 'N/A',
+                    'status_date' => $latestStatus ? $latestStatus->date : null,
+                    'status_comment' => $latestStatus ? $latestStatus->comment : null,
+                ];
+            });
+
+        // Count applications by status
+        $statusCounts = $applications->groupBy('current_status')->map->count();
+
+        return response()->json([
+            'data' => $applications,
+            'meta' => [
+                'total' => $applications->count(),
+                'status_counts' => [
+                    'submitted' => $statusCounts->get('submitted', 0),
+                    'first_approval' => $statusCounts->get('first_approval', 0),
+                    'meeting_scheduled' => $statusCounts->get('meeting_scheduled', 0),
+                    'second_approval' => $statusCounts->get('second_approval', 0),
+                    'final_approval' => $statusCounts->get('final_approval', 0),
+                    'enrolled' => $statusCounts->get('enrolled', 0),
+                    'rejected' => $statusCounts->get('rejected', 0),
+                    'other' => $statusCounts->get('N/A', 0),
+                ],
+                'enrolled_count' => $statusCounts->get('enrolled', 0),
+                'rejected_count' => $statusCounts->get('rejected', 0),
+            ]
+        ]);
+    }
+
+    /**
+     * Get all applications with same output format as submittedApplications (admin only)
+     */
+    public function getAllApplications(Request $request)
+    {
+        $user = $request->user();
+
+        // Check if user is admin
+        if (!$user || $user->role !== UserRole::ADMIN) {
+            return response()->json(['message' => 'Only admins can view all applications'], 403);
+        }
+
+        $applications = ApplicantApplication::with([
+            'applicant.user',
+            'scholarship',
+            'scholarship.countries',
+            'currentStatus' => function ($query) {
+                $query->latest('date');
+            }
+        ])
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($application) {

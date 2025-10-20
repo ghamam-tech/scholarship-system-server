@@ -29,7 +29,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/admin/applications/{id}/status', [ApplicantApplicationController::class, 'addStatus']);
         Route::get('/admin/statistics', [ApplicantApplicationController::class, 'getStatistics']);
         Route::delete('/admin/applications/{id}', [ApplicantApplicationController::class, 'destroy']);
-
+        Route::get('/admin/applications/get-all-applications', [ApplicantApplicationController::class, 'getAllApplications']);
         // New admin endpoints for application management
         Route::get('/admin/applications/submitted', [ApplicantApplicationController::class, 'submittedApplications']);
         Route::get('/admin/applications/all-with-status', [ApplicantApplicationController::class, 'getAllApplicationsWithStatus']);
