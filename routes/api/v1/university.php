@@ -22,5 +22,5 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     // Admin CRUD operations
     Route::post('admin/universities', [UniversityController::class, 'store']);
     Route::match(['put', 'patch'], 'admin/universities/{university}', [UniversityController::class, 'update']);
-    Route::delete('admin/universities/{university}/', [UniversityController::class, 'destroy']);
+    Route::delete('admin/universities/{university}', [UniversityController::class, 'destroy']);
 });
