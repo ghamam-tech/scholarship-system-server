@@ -51,4 +51,9 @@ class User extends Authenticatable
     {
         return $this->hasOne(Admin::class, 'user_id', 'user_id');
     }
+
+    public function qualifications()
+    {
+        return $this->hasMany(Qualification::class, 'user_id', 'user_id');
+    }
 }

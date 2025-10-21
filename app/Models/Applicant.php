@@ -45,9 +45,4 @@ class Applicant extends Model
     {
         return $this->hasMany(ApplicantApplication::class, 'applicant_id', 'applicant_id');
     }
-
-    public function qualifications()
-    {
-        return $this->hasMany(Qualification::class, 'applicant_id', 'applicant_id');
-    }
 }

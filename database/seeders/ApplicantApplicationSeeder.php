@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use App\Models\User;
 use App\Models\Applicant;
@@ -15,12 +14,9 @@ use App\Enums\ApplicationStatus;
 
 class ApplicantApplicationSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
-        // Create applicant users
+
         $applicants = [
             [
                 'email' => 'ahmed.mohamed@example.com',
@@ -130,23 +126,23 @@ class ApplicantApplicationSeeder extends Seeder
         ];
 
         foreach ($applicants as $applicantData) {
-            // Create user
+            // 1) Create user
             $user = User::create([
                 'email' => $applicantData['email'],
                 'password' => Hash::make($applicantData['password']),
                 'role' => UserRole::APPLICANT->value,
             ]);
 
-            // Create applicant
+            // 2) Create applicant profile linked to the user
             $applicant = Applicant::create(array_merge(
                 $applicantData['applicant_data'],
                 ['user_id' => $user->user_id]
             ));
 
-            // Create qualifications for each applicant
-            $this->createQualifications($applicant);
+            // 3) Create qualifications (NOW linked to USER)
+            $this->createQualifications($user, $applicant);
 
-            // Create applications for some applicants
+            // 4) Create applications (unchanged)
             $this->createApplications($applicant);
         }
 
@@ -154,75 +150,82 @@ class ApplicantApplicationSeeder extends Seeder
         $this->command->info('📧 All applicants have password: password123');
     }
 
-    private function createQualifications(Applicant $applicant): void
+    /**
+     * NOTE: changed signature to receive User as well.
+     * Qualifications now belong to USER via user_id.
+     * We also store document_file as a PATH (no full URL).
+     */
+    private function createQualifications(User $user, Applicant $applicant): void
     {
+        $uid = $user->user_id;
         $qualifications = [];
 
-        // All applicants have high school qualification
+        // High school – everyone has one
         $qualifications[] = [
-            'applicant_id' => $applicant->applicant_id,
+            'user_id' => $uid,                     // 🔁 was applicant_id
             'qualification_type' => 'high_school',
             'institute_name' => $applicant->place_of_birth . ' High School',
             'year_of_graduation' => 2019,
-            'cgpa' => rand(34, 39) / 10, // 3.4 - 3.9 on 4.0 scale
+            'cgpa' => rand(34, 39) / 10,
             'cgpa_out_of' => 4.0,
             'language_of_study' => 'Arabic',
             'specialization' => 'Science',
             'research_title' => null,
-            'document_file' => 'https://example.com/documents/high_school_' . $applicant->applicant_id . '.pdf',
+            // store PATH (object key) not a URL
+            'document_file' => "seed/users/{$uid}/qualifications/high_school_{$uid}.pdf",
             'created_at' => now(),
             'updated_at' => now(),
         ];
 
-        // Add bachelor's degree for most applicants
+        // Bachelor – ~50%
         if (rand(0, 1)) {
             $qualifications[] = [
-                'applicant_id' => $applicant->applicant_id,
+                'user_id' => $uid,
                 'qualification_type' => 'bachelor',
                 'institute_name' => 'King Saud University',
                 'year_of_graduation' => 2023,
-                'cgpa' => rand(34, 39) / 10, // 3.4 - 3.9
+                'cgpa' => rand(34, 39) / 10,
                 'cgpa_out_of' => 4.0,
                 'language_of_study' => 'Arabic',
                 'specialization' => 'Computer Science',
                 'research_title' => 'Software Engineering Principles',
-                'document_file' => 'https://example.com/documents/bachelor_' . $applicant->applicant_id . '.pdf',
+                'document_file' => "seed/users/{$uid}/qualifications/bachelor_{$uid}.pdf",
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
         }
 
-        // Add master's degree for some applicants
+        // Master – ~25%
         if (rand(0, 3) === 0) {
             $qualifications[] = [
-                'applicant_id' => $applicant->applicant_id,
+                'user_id' => $uid,
                 'qualification_type' => 'master',
                 'institute_name' => 'King Abdulaziz University',
                 'year_of_graduation' => 2024,
-                'cgpa' => rand(36, 40) / 10, // 3.6 - 4.0
+                'cgpa' => rand(36, 40) / 10,
                 'cgpa_out_of' => 4.0,
                 'language_of_study' => 'English',
                 'specialization' => 'Artificial Intelligence',
                 'research_title' => 'Machine Learning Applications in Healthcare',
-                'document_file' => 'https://example.com/documents/master_' . $applicant->applicant_id . '.pdf',
+                'document_file' => "seed/users/{$uid}/qualifications/master_{$uid}.pdf",
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
         }
 
-        // Add diploma for some applicants
+        // Diploma – ~33%
         if (rand(0, 2) === 0) {
             $qualifications[] = [
-                'applicant_id' => $applicant->applicant_id,
+                'user_id' => $uid,
                 'qualification_type' => 'diploma',
                 'institute_name' => 'Technical College ' . $applicant->place_of_birth,
                 'year_of_graduation' => 2020,
-                'cgpa' => rand(35, 38) / 10, // 3.5 - 3.8
+                'cgpa' => rand(35, 38) / 10,
                 'cgpa_out_of' => 4.0,
                 'language_of_study' => 'Arabic',
                 'specialization' => 'Information Technology',
                 'research_title' => null,
-                'document_file' => 'https://example.com/documents/diploma_' . $applicant->applicant_id . '.pdf',
+                'document_file' => "seed/users/{$uid}/qualifications/diploma_{$uid}.pdf",
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
@@ -231,17 +234,14 @@ class ApplicantApplicationSeeder extends Seeder
         Qualification::insert($qualifications);
     }
 
+    // createApplications() and createApplicationStatuses() stay the same
     private function createApplications(Applicant $applicant): void
     {
-        $scholarships = [1, 2, 3, 4, 5, 6, 7, 8]; // Active scholarship IDs from your table
+        $scholarships = [1, 2, 3, 4, 5, 6, 7, 8];
 
-        // Each applicant has 1-2 applications
         $applicationCount = rand(1, 2);
 
         for ($i = 0; $i < $applicationCount; $i++) {
-            $scholarshipId = $scholarships[array_rand($scholarships)];
-
-            // Different universities and countries for variety
             $universities = [
                 ['Stanford University', 'USA'],
                 ['MIT', 'USA'],
@@ -256,7 +256,7 @@ class ApplicantApplicationSeeder extends Seeder
 
             $application = ApplicantApplication::create([
                 'applicant_id' => $applicant->applicant_id,
-                'scholarship_id' => $scholarshipId, // Changed from scholarship_id_1 to scholarship_id
+                'scholarship_id' => $scholarships[array_rand($scholarships)],
                 'specialization_1' => 'Computer Science',
                 'specialization_2' => 'Data Science',
                 'specialization_3' => 'Artificial Intelligence',
@@ -268,12 +268,12 @@ class ApplicantApplicationSeeder extends Seeder
                 'cgpa' => rand(34, 39) / 10,
                 'cgpa_out_of' => 4.0,
                 'terms_and_condition' => true,
-                'offer_letter_file' => 'https://example.com/documents/offer_letter_' . $applicant->applicant_id . '_' . $i . '.pdf',
+                // You can also switch this to a PATH later if you move apps to S3 paths
+                'offer_letter_file' => "seed/applicants/{$applicant->applicant_id}/applications/offer_letter_{$applicant->applicant_id}_{$i}.pdf",
                 'created_at' => now()->subDays(rand(1, 30)),
                 'updated_at' => now(),
             ]);
 
-            // Create application status history
             $this->createApplicationStatuses($application);
         }
     }
@@ -281,9 +281,8 @@ class ApplicantApplicationSeeder extends Seeder
     private function createApplicationStatuses(ApplicantApplication $application): void
     {
         $statuses = [];
-        $currentDate = $application->created_at;
+        $currentDate = $application->created_at->copy();
 
-        // Initial enrolled status
         $statuses[] = [
             'application_id' => $application->application_id,
             'status_name' => ApplicationStatus::ENROLLED->value,
@@ -293,7 +292,6 @@ class ApplicantApplicationSeeder extends Seeder
             'updated_at' => $currentDate,
         ];
 
-        // Random progression through statuses
         $possibleStatuses = [
             ApplicationStatus::FIRST_APPROVAL->value,
             ApplicationStatus::SECOND_APPROVAL->value,
@@ -301,15 +299,12 @@ class ApplicantApplicationSeeder extends Seeder
             ApplicationStatus::REJECTED->value,
         ];
 
-        $currentStatus = ApplicationStatus::ENROLLED->value;
-
         foreach ($possibleStatuses as $status) {
-            // 70% chance to progress to next status, 30% to stop or get rejected
             if (rand(0, 100) > 70) {
                 break;
             }
 
-            $currentDate = $currentDate->addDays(rand(2, 7));
+            $currentDate = $currentDate->copy()->addDays(rand(2, 7));
 
             $statuses[] = [
                 'application_id' => $application->application_id,
@@ -320,9 +315,6 @@ class ApplicantApplicationSeeder extends Seeder
                 'updated_at' => $currentDate,
             ];
 
-            $currentStatus = $status;
-
-            // If rejected, stop the progression
             if ($status === ApplicationStatus::REJECTED->value) {
                 break;
             }
