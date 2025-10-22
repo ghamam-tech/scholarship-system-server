@@ -109,16 +109,14 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Applicant profile not found'], 404);
         }
 
-        // Check if applicant has an application with first_approval status
-        $application = $applicant->applications()
-            ->whereHas('currentStatus', function ($query) {
-                $query->where('status_name', ApplicationStatus::FIRST_APPROVAL->value);
-            })
-            ->first();
+        // Require user-level FIRST_APPROVAL
+        $hasFirstApproval = ApplicantApplicationStatus::where('user_id', $user->user_id)
+            ->where('status_name', ApplicationStatus::FIRST_APPROVAL->value)
+            ->exists();
 
-        if (!$application) {
+        if (!$hasFirstApproval) {
             return response()->json([
-                'message' => 'You must have an application with first approval status to book appointments'
+                'message' => 'You must have first approval status to book appointments'
             ], 403);
         }
 
@@ -172,7 +170,7 @@ class AppointmentController extends Controller
 
             // Update application status to meeting_scheduled
             ApplicantApplicationStatus::create([
-                'application_id' => $application->application_id,
+                'user_id' => $user->user_id,
                 'status_name' => ApplicationStatus::MEETING_SCHEDULED->value,
                 'date' => now(),
                 'comment' => 'Appointment booked for meeting',
@@ -333,7 +331,6 @@ class AppointmentController extends Controller
     {
         $user = $request->user();
 
-        // Check if user is an applicant
         if (!$user || $user->role !== UserRole::APPLICANT) {
             return response()->json(['message' => 'Only applicants can cancel their appointments'], 403);
         }
@@ -343,7 +340,6 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Applicant profile not found'], 404);
         }
 
-        // Find the appointment
         $appointment = Appointment::where('appointment_id', $appointmentId)
             ->where('user_id', $user->user_id)
             ->first();
@@ -352,38 +348,35 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Appointment not found'], 404);
         }
 
-        // Check if appointment can be canceled
         if (!$appointment->canBeCanceled()) {
-            return response()->json([
-                'message' => 'This appointment cannot be canceled'
-            ], 422);
+            return response()->json(['message' => 'This appointment cannot be canceled'], 422);
         }
 
         try {
             DB::beginTransaction();
 
-            // Cancel the appointment and make it available for others
+            // release the slot
             $appointment->update([
                 'status' => 'available',
-                'user_id' => null, // Clear the user_id so others can book it
-                'booked_at' => null, // Clear the booked_at timestamp
-                'canceled_at' => now(), // Keep track of when it was canceled
+                'user_id' => null,
+                'booked_at' => null,
+                'canceled_at' => now(),
             ]);
 
-            // Update application status back to first_approval
-            $application = $applicant->applications()
-                ->whereHas('currentStatus', function ($query) {
-                    $query->where('status_name', ApplicationStatus::MEETING_SCHEDULED->value);
-                })
-                ->first();
+            // only roll status back if the user had "meeting_scheduled"
+            $hadMeeting = ApplicantApplicationStatus::where('user_id', $user->user_id)
+                ->where('status_name', ApplicationStatus::MEETING_SCHEDULED->value)
+                ->exists();
 
-            if ($application) {
+            $statusUpdated = null;
+            if ($hadMeeting) {
                 ApplicantApplicationStatus::create([
-                    'application_id' => $application->application_id,
+                    'user_id' => $user->user_id,
                     'status_name' => ApplicationStatus::FIRST_APPROVAL->value,
                     'date' => now(),
                     'comment' => 'Appointment canceled, back to first approval',
                 ]);
+                $statusUpdated = ApplicationStatus::FIRST_APPROVAL->value;
             }
 
             DB::commit();
@@ -395,7 +388,7 @@ class AppointmentController extends Controller
                     'status' => $appointment->status,
                     'canceled_at' => $appointment->canceled_at,
                 ],
-                'application_status_updated' => ApplicationStatus::FIRST_APPROVAL->value,
+                'application_status_updated' => $statusUpdated, // may be null if no rollback
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -405,6 +398,7 @@ class AppointmentController extends Controller
             ], 500);
         }
     }
+
 
     /**
      * Admin: Create new appointment slots
@@ -463,11 +457,11 @@ class AppointmentController extends Controller
         }
 
         $data = $request->validate([
-            'date'           => ['required', 'date_format:Y-m-d'],
-            'window_start'   => ['required', 'string', 'max:20'],
-            'window_end'     => ['required', 'string', 'max:20'],
-            'duration_min'   => ['required', 'integer', 'min:5', 'max:240'],
-            'meeting_url'    => ['nullable', 'string', 'max:2048'],
+            'date' => ['required', 'date_format:Y-m-d'],
+            'window_start' => ['required', 'string', 'max:20'],
+            'window_end' => ['required', 'string', 'max:20'],
+            'duration_min' => ['required', 'integer', 'min:5', 'max:240'],
+            'meeting_url' => ['nullable', 'string', 'max:2048'],
             'owner_timezone' => ['nullable', 'string', 'max:64'],
         ]);
 
@@ -475,7 +469,7 @@ class AppointmentController extends Controller
         $tz = $data['owner_timezone'] ?: $this->detectUserTimezone($request);
 
         $startLocal = $this->parseLocal($data['date'], $data['window_start'], $tz);
-        $endLocal   = $this->parseLocal($data['date'], $data['window_end'], $tz);
+        $endLocal = $this->parseLocal($data['date'], $data['window_end'], $tz);
 
         if (!$startLocal || !$endLocal) {
             return response()->json(['message' => 'Invalid time format (use HH:mm or hh:mm AM/PM).'], 422);
@@ -485,15 +479,15 @@ class AppointmentController extends Controller
         }
 
         $duration = (int) $data['duration_min'];
-        $cursor   = $startLocal->copy();
-        $created  = 0;
+        $cursor = $startLocal->copy();
+        $created = 0;
 
         try {
             DB::beginTransaction();
 
             while ($cursor->lt($endLocal)) {
                 $slotStartLocal = $cursor->copy();
-                $slotEndLocal   = $cursor->copy()->addMinutes($duration);
+                $slotEndLocal = $cursor->copy()->addMinutes($duration);
                 if ($slotEndLocal->gt($endLocal)) {
                     break; // avoid partial slot at the end
                 }
@@ -503,11 +497,11 @@ class AppointmentController extends Controller
                 if (!$exists) {
                     Appointment::create([
                         'starts_at_utc' => $slotStartLocal->clone()->utc(),
-                        'ends_at_utc'   => $slotEndLocal->clone()->utc(),
+                        'ends_at_utc' => $slotEndLocal->clone()->utc(),
                         'owner_timezone' => $tz,
-                        'duration_min'  => $duration,
-                        'meeting_url'   => $data['meeting_url'] ?? null,
-                        'status'        => 'available',
+                        'duration_min' => $duration,
+                        'meeting_url' => $data['meeting_url'] ?? null,
+                        'status' => 'available',
                     ]);
                     $created++;
                 }
@@ -519,7 +513,7 @@ class AppointmentController extends Controller
 
             return response()->json([
                 'message' => 'Appointments generated successfully',
-                'count'   => $created,
+                'count' => $created,
                 'date' => $data['date'],
                 'window_start' => $data['window_start'],
                 'window_end' => $data['window_end'],
@@ -555,10 +549,10 @@ class AppointmentController extends Controller
         }
 
         $data = $request->validate([
-            'date'           => ['required', 'date_format:Y-m-d'],
-            'time'           => ['required', 'string', 'max:20'],
-            'duration_min'   => ['required', 'integer', 'min:5', 'max:240'],
-            'meeting_url'    => ['nullable', 'string', 'max:2048'],
+            'date' => ['required', 'date_format:Y-m-d'],
+            'time' => ['required', 'string', 'max:20'],
+            'duration_min' => ['required', 'integer', 'min:5', 'max:240'],
+            'meeting_url' => ['nullable', 'string', 'max:2048'],
             'owner_timezone' => ['nullable', 'string', 'max:64'],
         ]);
 
@@ -569,17 +563,17 @@ class AppointmentController extends Controller
         if (!$startLocal) {
             return response()->json(['message' => 'Invalid time format (use HH:mm or hh:mm AM/PM).'], 422);
         }
-        $endLocal = $startLocal->copy()->addMinutes((int)$data['duration_min']);
+        $endLocal = $startLocal->copy()->addMinutes((int) $data['duration_min']);
 
         try {
             $appointment = Appointment::firstOrCreate(
                 ['starts_at_utc' => $startLocal->clone()->utc()],
                 [
-                    'ends_at_utc'    => $endLocal->clone()->utc(),
+                    'ends_at_utc' => $endLocal->clone()->utc(),
                     'owner_timezone' => $tz,
-                    'duration_min'   => (int)$data['duration_min'],
-                    'meeting_url'    => $data['meeting_url'] ?? null,
-                    'status'         => 'available',
+                    'duration_min' => (int) $data['duration_min'],
+                    'meeting_url' => $data['meeting_url'] ?? null,
+                    'status' => 'available',
                 ]
             );
 
@@ -790,7 +784,8 @@ class AppointmentController extends Controller
         foreach ($formats as $fmt) {
             try {
                 $c = Carbon::createFromFormat("Y-m-d {$fmt}", "{$date} {$time}", $tz);
-                if ($c !== false) return $c;
+                if ($c !== false)
+                    return $c;
             } catch (\Throwable $e) { /* try next */
             }
         }

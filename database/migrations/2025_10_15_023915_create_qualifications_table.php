@@ -5,12 +5,18 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration {
-    public function up(): void {
+    public function up(): void
+    {
         Schema::create('qualifications', function (Blueprint $table) {
             $table->id('qualification_id');
 
             $table->enum('qualification_type', [
-                'high_school','diploma','bachelor','master','phd','other'
+                'high_school',
+                'diploma',
+                'bachelor',
+                'master',
+                'phd',
+                'other'
             ])->nullable();
 
             $table->string('institute_name')->nullable();
@@ -24,17 +30,18 @@ return new class extends Migration {
             $table->string('research_title')->nullable();
             $table->string('document_file')->nullable();
 
-            // Link to applicant (not application)
-            $table->foreignId('applicant_id')
-                  ->constrained('applicants', 'applicant_id')
-                  ->cascadeOnUpdate()
-                  ->cascadeOnDelete();
+            // Link to user
+            $table->foreignId('user_id')
+                ->constrained('users', 'user_id')
+                ->cascadeOnUpdate()
+                ->cascadeOnDelete();
 
             $table->timestamps();
         });
     }
 
-    public function down(): void {
+    public function down(): void
+    {
         Schema::dropIfExists('qualifications');
     }
 };

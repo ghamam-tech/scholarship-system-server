@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Applicant;
 use App\Models\Qualification;
+use App\Models\Appointment;
 use App\Enums\UserRole;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -72,19 +73,20 @@ class ApplicantController extends Controller
             $this->handleDocumentUploads($request, $applicant);
 
             // Step 3: Replace all qualifications
-            $applicant->qualifications()->delete();
+            $user = $request->user();
+            $user->qualifications()->delete();
 
             foreach ($data['academic_info']['qualifications'] as $index => $qualData) {
-                $documentFile = null;
+                $documentPath = null;
                 if ($request->hasFile("academic_info.qualifications.{$index}.document_file")) {
                     $file = $request->file("academic_info.qualifications.{$index}.document_file");
                     $filename = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
-                    $path = $file->storeAs("applicants/{$applicant->applicant_id}/qualifications", $filename, 's3');
-                    $documentFile = config('filesystems.disks.s3.url') . '/' . $path;
+                    // store under users/, save PATH only
+                    $documentPath = $file->storeAs("users/{$user->user_id}/qualifications", $filename, 's3');
                 }
 
                 Qualification::create([
-                    'applicant_id' => $applicant->applicant_id,
+                    'user_id' => $user->user_id,
                     'qualification_type' => $qualData['qualification_type'],
                     'institute_name' => $qualData['institute_name'],
                     'year_of_graduation' => $qualData['year_of_graduation'],
@@ -93,15 +95,32 @@ class ApplicantController extends Controller
                     'language_of_study' => $qualData['language_of_study'] ?? null,
                     'specialization' => $qualData['specialization'] ?? null,
                     'research_title' => $qualData['research_title'] ?? null,
-                    'document_file' => $documentFile,
+                    'document_file' => $documentPath, // path (object key), not full URL
                 ]);
             }
 
             DB::commit();
 
+            $quals = $user->qualifications()->get()->map(function ($q) {
+                $url = $q->document_file ? Storage::disk('s3')->url($q->document_file) : null;
+                $q->document_url = $url;      // extra field (optional)
+                $q->document_file = $url;      // overwrite for this response only
+                return $q;
+            });
+
+            $applicant->setRelation('qualifications', $quals);
+
+            // Also overwrite applicant doc fields to URLs if you want the same keys:
+            $toUrl = fn($p) => $p ? Storage::disk('s3')->url($p) : null;
+            $applicant->passport_copy_img = $toUrl($applicant->passport_copy_img);
+            $applicant->personal_image = $toUrl($applicant->personal_image);
+            $applicant->volunteering_certificate_file = $toUrl($applicant->volunteering_certificate_file);
+            $applicant->tahsili_file = $toUrl($applicant->tahsili_file);
+            $applicant->qudorat_file = $toUrl($applicant->qudorat_file);
+
             return response()->json([
                 'message' => 'Profile completed successfully',
-                'applicant' => $applicant->load('qualifications')
+                'applicant' => $applicant,
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -188,15 +207,15 @@ class ApplicantController extends Controller
         foreach ($documentFields as $requestField => $dbField) {
             if ($request->hasFile($requestField)) {
                 if ($applicant->$dbField) {
-                    Storage::disk('s3')->delete($applicant->$dbField);
+                    Storage::disk('s3')->delete($applicant->$dbField); // delete by PATH
                 }
 
                 $file = $request->file($requestField);
                 $filename = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
                 $path = $file->storeAs("applicants/{$applicant->applicant_id}/documents", $filename, 's3');
-                $fullUrl = config('filesystems.disks.s3.url') . '/' . $path;
 
-                $applicant->update([$dbField => $fullUrl]);
+                // Save PATH only
+                $applicant->update([$dbField => $path]);
             }
         }
     }
@@ -212,7 +231,9 @@ class ApplicantController extends Controller
             return response()->json(['message' => 'Applicant profile not found'], 404);
         }
 
-        $applicant->load('qualifications');
+        // loading the users data to get the qualifications through user
+        $applicant->load('user');
+        $applicant->setRelation('qualifications', $request->user()->qualifications);
 
         return response()->json(['applicant' => $applicant]);
     }
@@ -226,9 +247,9 @@ class ApplicantController extends Controller
      */
     public function addQualification(Request $request)
     {
-        $applicant = $request->user()->applicant;
+        $user = $request->user();
 
-        if (!$applicant) {
+        if (!$user->applicant) {
             return response()->json(['message' => 'Applicant profile not found'], 404);
         }
 
@@ -246,11 +267,10 @@ class ApplicantController extends Controller
 
         try {
             $filename = time() . '_' . str_replace(' ', '_', $request->file('document_file')->getClientOriginalName());
-            $documentPath = $request->file('document_file')->storeAs("applicants/{$applicant->applicant_id}/qualifications", $filename, 's3');
-            $documentFile = config('filesystems.disks.s3.url') . '/' . $documentPath;
+            $documentPath = $request->file('document_file')->storeAs("users/{$user->user_id}/qualifications", $filename, 's3');
 
             $qualification = Qualification::create([
-                'applicant_id' => $applicant->applicant_id,
+                'user_id' => $user->user_id,
                 'qualification_type' => $data['qualification_type'],
                 'institute_name' => $data['institute_name'],
                 'year_of_graduation' => $data['year_of_graduation'],
@@ -259,7 +279,7 @@ class ApplicantController extends Controller
                 'language_of_study' => $data['language_of_study'] ?? null,
                 'specialization' => $data['specialization'] ?? null,
                 'research_title' => $data['research_title'] ?? null,
-                'document_file' => $documentFile,
+                'document_file' => $documentPath, // save PATH
             ]);
 
             return response()->json([
@@ -279,57 +299,51 @@ class ApplicantController extends Controller
      */
     public function updateQualification(Request $request, $qualificationId)
     {
-        $applicant = $request->user()->applicant;
-        if (!$applicant) {
+        $user = $request->user();
+
+        if (!$user->applicant) {
             return response()->json(['message' => 'Applicant profile not found'], 404);
         }
 
-        $qualification = $applicant->qualifications()->findOrFail($qualificationId);
+        $qualification = $user->qualifications()->findOrFail($qualificationId);
 
         $data = $request->validate([
             'qualification_type' => ['sometimes', Rule::in(['high_school', 'diploma', 'bachelor', 'master', 'phd', 'other'])],
-            'institute_name'     => ['sometimes', 'string', 'max:255'],
+            'institute_name' => ['sometimes', 'string', 'max:255'],
             'year_of_graduation' => ['sometimes', 'integer', 'min:1900', 'max:' . (date('Y') + 5)],
-            'cgpa'               => ['nullable', 'numeric', 'min:0'],
-            'cgpa_out_of'        => ['nullable', 'numeric', 'min:0'],
-            'language_of_study'  => ['nullable', 'string', 'max:100'],
-            'specialization'     => ['nullable', 'string', 'max:255'],
-            'research_title'     => ['nullable', 'string', 'max:500'],
-            'document_file'      => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+            'cgpa' => ['nullable', 'numeric', 'min:0'],
+            'cgpa_out_of' => ['nullable', 'numeric', 'min:0'],
+            'language_of_study' => ['nullable', 'string', 'max:100'],
+            'specialization' => ['nullable', 'string', 'max:255'],
+            'research_title' => ['nullable', 'string', 'max:500'],
+            'document_file' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
         ]);
 
         try {
-            $documentFile = $qualification->document_file;
+            $documentPath = $qualification->document_file;
 
-            // IMPORTANT: files won’t arrive on raw PUT; use POST + _method=PUT
             if ($request->hasFile('document_file')) {
-                if ($documentFile) {
-                    // This won’t delete if you stored full URL; okay to keep for now.
-                    Storage::disk('s3')->delete($documentFile);
+                if ($documentPath) {
+                    Storage::disk('s3')->delete($documentPath); // delete by PATH
                 }
                 $file = $request->file('document_file');
                 $filename = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
-                $documentPath = $file->storeAs(
-                    "applicants/{$applicant->applicant_id}/qualifications",
-                    $filename,
-                    's3'
-                );
-                $documentFile = config('filesystems.disks.s3.url') . '/' . $documentPath;
+                $documentPath = $file->storeAs("users/{$user->user_id}/qualifications", $filename, 's3');
             }
 
-            $qualification->update([
-                'qualification_type' => $data['qualification_type'] ?? $qualification->qualification_type,
-                'institute_name'     => $data['institute_name'] ?? $qualification->institute_name,
-                'year_of_graduation' => $data['year_of_graduation'] ?? $qualification->year_of_graduation,
-                'cgpa'               => array_key_exists('cgpa', $data) ? $data['cgpa'] : $qualification->cgpa,
-                'cgpa_out_of'        => array_key_exists('cgpa_out_of', $data) ? $data['cgpa_out_of'] : $qualification->cgpa_out_of,
-                'language_of_study'  => $data['language_of_study'] ?? $qualification->language_of_study,
-                'specialization'     => $data['specialization'] ?? $qualification->specialization,
-                'research_title'     => $data['research_title'] ?? $qualification->research_title,
-                'document_file'      => $documentFile,
-            ]);
+            $qualification->update(array_filter([
+                'qualification_type' => $data['qualification_type'] ?? null,
+                'institute_name' => $data['institute_name'] ?? null,
+                'year_of_graduation' => $data['year_of_graduation'] ?? null,
+                'cgpa' => array_key_exists('cgpa', $data) ? $data['cgpa'] : null,
+                'cgpa_out_of' => array_key_exists('cgpa_out_of', $data) ? $data['cgpa_out_of'] : null,
+                'language_of_study' => $data['language_of_study'] ?? null,
+                'specialization' => $data['specialization'] ?? null,
+                'research_title' => $data['research_title'] ?? null,
+                'document_file' => $documentPath,
+            ], static fn($v) => $v !== null));
 
-            $qualification->refresh(); // ensure response matches DB
+            // $qualification->refresh(); // ensure response matches DB
 
             return response()->json([
                 'message' => 'Qualification updated successfully',
@@ -349,13 +363,13 @@ class ApplicantController extends Controller
      */
     public function deleteQualification(Request $request, $qualificationId)
     {
-        $applicant = $request->user()->applicant;
+        $user = $request->user();
 
-        if (!$applicant) {
+        if (!$user->applicant) {
             return response()->json(['message' => 'Applicant profile not found'], 404);
         }
 
-        $qualification = $applicant->qualifications()->findOrFail($qualificationId);
+        $qualification = $user->qualifications()->findOrFail($qualificationId);
 
         try {
             if ($qualification->document_file) {
@@ -364,9 +378,8 @@ class ApplicantController extends Controller
 
             $qualification->delete();
 
-            return response()->json([
-                'message' => 'Qualification deleted successfully'
-            ]);
+            return response()->json(['message' => 'Qualification deleted successfully']);
+
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to delete qualification',
@@ -404,31 +417,28 @@ class ApplicantController extends Controller
     public function destroy(Applicant $applicant)
     {
         try {
-            $fileFields = [
-                'passport_copy_img',
-                'personal_image',
-                'volunteering_certificate_file',
-                'tahsili_file',
-                'qudorat_file'
-            ];
-
-            foreach ($fileFields as $field) {
+            // Delete applicant files
+            foreach (['passport_copy_img', 'personal_image', 'volunteering_certificate_file', 'tahsili_file', 'qudorat_file'] as $field) {
                 if ($applicant->$field) {
-                    Storage::disk('s3')->delete($applicant->$field);
+                    Storage::disk('s3')->delete($applicant->$field); // ensure this stores PATHs too
                 }
             }
 
-            // Delete qualifications and their files
-            foreach ($applicant->qualifications as $qualification) {
-                if ($qualification->document_file) {
-                    Storage::disk('s3')->delete($qualification->document_file);
+            // Delete qualifications via the user
+            $user = $applicant->user;
+            if ($user) {
+                foreach ($user->qualifications as $qualification) {
+                    if ($qualification->document_file) {
+                        Storage::disk('s3')->delete($qualification->document_file);
+                    }
+                    $qualification->delete();
                 }
-                $qualification->delete();
             }
 
             $applicant->delete();
 
             return response()->json(['message' => 'Applicant deleted successfully']);
+
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to delete applicant',
@@ -444,7 +454,7 @@ class ApplicantController extends Controller
     {
         $user = $request->user();
 
-        // Check if user is an applicant
+        // 0) Authz: must be applicant
         if (!$user || $user->role !== UserRole::APPLICANT) {
             return response()->json(['message' => 'Only applicants can view their status'], 403);
         }
@@ -454,70 +464,58 @@ class ApplicantController extends Controller
             return response()->json(['message' => 'Applicant profile not found'], 404);
         }
 
-        // Debug: Log user and applicant info
-        Log::info('User ID: ' . $user->user_id . ', Applicant ID: ' . ($applicant ? $applicant->applicant_id : 'null'));
+        // 1) Profile completion
+        $isCompleted = (bool) ($applicant->is_completed ?? false);
 
-        // 1. Check if profile is completed
-        $isCompleted = $applicant->is_completed ?? false;
-
-        // 2. Check application statuses
         $haveFirstApproval = false;
         $hasActiveApplication = false;
         $appointment = null;
 
         if ($isCompleted) {
-            // Get the latest status for any application
-            $latestStatus = $applicant->applications()
-                ->with(['statuses' => function ($query) {
-                    $query->orderBy('date', 'desc')->orderBy('created_at', 'desc');
-                }])
-                ->get()
-                ->flatMap(function ($application) {
-                    return $application->statuses;
-                })
-                ->sortByDesc('date')
-                ->sortByDesc('created_at')
-                ->first();
+            // 2) Latest status at USER level (eager-load is cheap here)
+            $user->load('currentStatus');
+            $latestStatus = $user->currentStatus; // may be null if no applications/statuses yet
 
-            // Debug: Check what status we actually have
             if ($latestStatus) {
                 Log::info('Latest status found: ' . $latestStatus->status_name);
 
-                // Check if current status is first_approval
-                if ($latestStatus->status_name === 'first_approval') {
+                // a) first_approval flag
+                if (in_array($latestStatus->status_name, ['first_approval', 'meeting_scheduled'], true)) {
                     $haveFirstApproval = true;
                 }
 
-                // Check if has active application (enrolled, first_approval, meeting_scheduled, second_approval, final_approval)
-                if (in_array($latestStatus->status_name, ['enrolled', 'first_approval', 'meeting_scheduled', 'second_approval', 'final_approval'])) {
+                // b) active application flag
+                if (
+                    in_array(
+                        $latestStatus->status_name,
+                        ['enrolled', 'first_approval', 'meeting_scheduled', 'second_approval', 'final_approval'],
+                        true
+                    )
+                ) {
                     $hasActiveApplication = true;
                 }
             } else {
                 Log::info('No latest status found - applicant has no applications yet');
             }
 
-            // 3. Check appointments based on status
-            $appointment = null;
-
+            // 3) Appointment logic
             if ($haveFirstApproval || ($latestStatus && $latestStatus->status_name === 'meeting_scheduled')) {
-                // Check for booked appointment first
-                $bookedAppointment = \App\Models\Appointment::where('user_id', $user->user_id)
+                // Check for a *booked* future appointment
+                $bookedAppointment = Appointment::where('user_id', $user->user_id)
                     ->where('status', 'booked')
                     ->where('starts_at_utc', '>', now())
                     ->first();
 
                 if ($bookedAppointment) {
-                    // User has a booked appointment
-                    $appointment = $bookedAppointment;
+                    $appointment = $bookedAppointment; // format later
                 } else {
-                    // User has first approval but no booked appointment, return available appointments
-                    $availableAppointments = \App\Models\Appointment::where('status', 'available')
+                    // No booked slot; provide available upcoming slots
+                    $availableAppointments = Appointment::where('status', 'available')
                         ->where('starts_at_utc', '>', now())
                         ->orderBy('starts_at_utc')
                         ->get();
 
                     if ($availableAppointments->count() > 0) {
-                        // Get applicant's timezone for display
                         $applicantTimezone = $user->timezone ?? 'UTC';
 
                         $appointment = [
@@ -541,19 +539,14 @@ class ApplicantController extends Controller
                                     'meeting_url' => $apt->meeting_url,
                                     'status' => $apt->status,
                                 ];
-                            })->toArray()
+                            })->toArray(),
                         ];
                     }
                 }
             }
 
-            // Debug: Check appointment search
-            Log::info('Looking for appointment for user_id: ' . $user->user_id);
-            Log::info('Found appointment: ' . ($appointment ? 'Yes' : 'No'));
-
-            // Format booked appointment if found
+            // 4) If we found a booked appointment, format it for response
             if ($appointment && !isset($appointment['type'])) {
-                // Get applicant's timezone for display
                 $applicantTimezone = $user->timezone ?? 'UTC';
                 $startsAtLocal = $appointment->starts_at_utc->setTimezone($applicantTimezone);
                 $endsAtLocal = $appointment->ends_at_utc->setTimezone($applicantTimezone);
@@ -584,4 +577,5 @@ class ApplicantController extends Controller
             'appointment' => $appointment,
         ]);
     }
+
 }

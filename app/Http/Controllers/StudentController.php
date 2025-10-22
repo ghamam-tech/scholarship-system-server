@@ -2,107 +2,160 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Models\Student;
+use App\Models\User;
+use App\Models\Applicant;
+use App\Models\ApplicantApplicationStatus;
+use App\Enums\ApplicationStatus;
 use App\Enums\UserRole;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 
 class StudentController extends Controller
 {
     /**
-     * Admin: Create a new student with email and password only
+     * Admin-only: Issue FIRST_WARNING to a student.
      */
-    public function createStudent(Request $request)
+    public function issueFirstWarning(Request $request, $studentId)
     {
-        $user = $request->user();
-
-        // Check if user is admin
-        if (!$user || $user->role !== UserRole::ADMIN) {
-            return response()->json(['message' => 'Only admins can create students'], 403);
+        // Admin gate
+        $auth = $request->user();
+        $roleVal = is_object($auth->role) ? $auth->role->value : (string) $auth->role;
+        if ($roleVal !== UserRole::ADMIN->value) {
+            return response()->json(['message' => 'Only admins can issue warnings'], 403);
         }
 
         $data = $request->validate([
-            'email' => ['required', 'email', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8'],
+            'comment' => ['nullable', 'string', 'max:1000'],
         ]);
 
         try {
-            DB::beginTransaction();
+            return DB::transaction(function () use ($studentId, $data) {
+                $student = Student::with(['user'])->findOrFail($studentId);
+                $userId = $student->user_id;
 
-            // Create user with student role
-            $user = User::create([
-                'email' => $data['email'],
-                'password' => Hash::make($data['password']),
-                'role' => UserRole::STUDENT,
-                'timezone' => 'UTC', // Default timezone
-            ]);
+                ApplicantApplicationStatus::create([
+                    'user_id' => $userId,
+                    'status_name' => ApplicationStatus::FIRST_WARNING->value,
+                    'date' => now(),
+                    'comment' => $data['comment'] ?? 'First warning issued by admin',
+                ]);
 
-            // Create student record linked to the user
-            $student = Student::create([
-                'user_id' => $user->user_id,
-            ]);
-
-            DB::commit();
-
-            return response()->json([
-                'message' => 'Student created successfully',
-                'student' => [
+                return response()->json([
+                    'message' => 'First warning issued successfully',
                     'student_id' => $student->student_id,
-                    'user_id' => $user->user_id,
-                    'email' => $user->email,
-                    'role' => $user->role->value,
-                ]
-            ], 201);
-        } catch (\Exception $e) {
-            DB::rollBack();
+                ]);
+            });
+        } catch (\Throwable $e) {
             return response()->json([
-                'message' => 'Failed to create student',
-                'error' => $e->getMessage()
+                'message' => 'Failed to issue first warning',
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Admin: Get all students
+     * Admin-only: Issue SECOND_WARNING to a student.
      */
-    public function getAllStudents(Request $request)
+    public function issueSecondWarning(Request $request, $studentId)
     {
-        $user = $request->user();
-
-        // Check if user is admin
-        if (!$user || $user->role !== UserRole::ADMIN) {
-            return response()->json(['message' => 'Only admins can view all students'], 403);
+        // Admin gate
+        $auth = $request->user();
+        $roleVal = is_object($auth->role) ? $auth->role->value : (string) $auth->role;
+        if ($roleVal !== UserRole::ADMIN->value) {
+            return response()->json(['message' => 'Only admins can issue warnings'], 403);
         }
 
-        $students = Student::with('user')->get();
-
-        return response()->json([
-            'students' => $students
+        $data = $request->validate([
+            'comment' => ['nullable', 'string', 'max:1000'],
         ]);
+
+        try {
+            return DB::transaction(function () use ($studentId, $data) {
+                $student = Student::with(['user'])->findOrFail($studentId);
+                $userId = $student->user_id;
+
+                ApplicantApplicationStatus::create([
+                    'user_id' => $userId,
+                    'status_name' => ApplicationStatus::SECOND_WARNING->value,
+                    'date' => now(),
+                    'comment' => $data['comment'] ?? 'Second warning issued by admin',
+                ]);
+
+                return response()->json([
+                    'message' => 'Second warning issued successfully',
+                    'student_id' => $student->student_id,
+                ]);
+            });
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to issue second warning',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
-     * Admin: Get specific student by ID
+     * Admin-only: Terminate a student.
+     * - Adds TERMINATED status
+     * - Reverts user role to APPLICANT
+     * - Deletes the student record
      */
-    public function getStudentById(Request $request, $id)
+    public function terminateStudent(Request $request, $studentId)
     {
-        $user = $request->user();
-
-        // Check if user is admin
-        if (!$user || $user->role !== UserRole::ADMIN) {
-            return response()->json(['message' => 'Only admins can view student details'], 403);
+        // Admin gate
+        $auth = $request->user();
+        $roleVal = is_object($auth->role) ? $auth->role->value : (string) $auth->role;
+        if ($roleVal !== UserRole::ADMIN->value) {
+            return response()->json(['message' => 'Only admins can terminate students'], 403);
         }
 
-        $student = Student::with('user')->find($id);
-
-        if (!$student) {
-            return response()->json(['message' => 'Student not found'], 404);
-        }
-
-        return response()->json([
-            'student' => $student
+        $data = $request->validate([
+            'comment' => ['nullable', 'string', 'max:1000'],
         ]);
+
+        try {
+            return DB::transaction(function () use ($studentId, $data) {
+                // Load student with user
+                $student = Student::with(['user'])->findOrFail($studentId);
+                $user = $student->user;
+
+                if (!$user) {
+                    return response()->json(['message' => 'Linked user not found for this student'], 422);
+                }
+
+                // 1) Status trail: TERMINATED
+                ApplicantApplicationStatus::create([
+                    'user_id' => $user->user_id,
+                    'status_name' => ApplicationStatus::TERMINATED->value,
+                    'date' => now(),
+                    'comment' => $data['comment'] ?? 'Student terminated by admin',
+                ]);
+
+                // 2) Revert user role to APPLICANT
+                $user->role = is_object($user->role) ? UserRole::APPLICANT : UserRole::APPLICANT->value;
+                $user->save();
+
+                // 3) Delete the student record
+                $student->delete();
+
+                // If you want to unarchive the Applicant profile on termination, uncomment:
+                // $applicant = Applicant::where('user_id', $user->user_id)->first();
+                // if ($applicant) {
+                //     $applicant->is_archive = false;
+                //     $applicant->save();
+                // }
+
+                return response()->json([
+                    'message' => 'Student terminated successfully. Role reverted to applicant and student record removed.',
+                    'user_id' => $user->user_id,
+                ]);
+            });
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to terminate student',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 }
