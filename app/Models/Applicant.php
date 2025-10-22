@@ -33,7 +33,10 @@ class Applicant extends Model
         'qudorat_file',
         'tahseeli_percentage',
         'qudorat_percentage',
-        'is_completed'
+        'is_completed',
+        'is_archived',
+        'migrated_to_student_at',
+        'reactivated_from_student_at'
     ];
 
     public function user()
@@ -50,4 +53,14 @@ class Applicant extends Model
     {
         return $this->hasMany(Qualification::class, 'applicant_id', 'applicant_id');
     }
+
+    protected $casts = [
+        'is_studied_in_saudi' => 'boolean',
+        'is_completed' => 'boolean',
+        'is_archived' => 'boolean',
+        'migrated_to_student_at' => 'datetime',
+        'reactivated_from_student_at' => 'datetime',
+        'tahseeli_percentage' => 'decimal:2',
+        'qudorat_percentage' => 'decimal:2',
+    ];
 }

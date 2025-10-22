@@ -11,9 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('applicants', function (Blueprint $table) {
-            $table->boolean('is_completed')->default(false)->after('qudorat_percentage');
-        });
+        // Check if column already exists before adding it
+        if (!Schema::hasColumn('applicants', 'is_completed')) {
+            Schema::table('applicants', function (Blueprint $table) {
+                $table->boolean('is_completed')->default(false)->after('qudorat_percentage');
+            });
+        }
     }
 
     /**
@@ -26,3 +29,4 @@ return new class extends Migration
         });
     }
 };
+

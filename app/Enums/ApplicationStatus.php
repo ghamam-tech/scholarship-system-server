@@ -10,4 +10,6 @@ enum ApplicationStatus: string
     case SECOND_APPROVAL = 'second_approval';
     case FINAL_APPROVAL = 'final_approval';
     case REJECTED = 'rejected';
+    case GRADUATE = 'graduate';
+    case SCHOLARSHIP_SUSPENSION = 'scholarship_suspension';
 }

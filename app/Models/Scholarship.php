@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Scholarship extends Model
 {
     protected $primaryKey = 'scholarship_id';
-    
+
     protected $fillable = [
         'scholarship_name',
         'scholarship_type',
@@ -64,8 +64,8 @@ class Scholarship extends Model
     public function scopeVisible($query)
     {
         return $query->where('is_active', true)
-                    ->where('is_hided', false)
-                    ->where('closing_date', '>', now());
+            ->where('is_hided', false)
+            ->where('closing_date', '>', now());
     }
 
     // Scope for admin view (shows all scholarships)

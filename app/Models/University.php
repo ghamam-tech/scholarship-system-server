@@ -8,7 +8,7 @@ class University extends Model
 {
     protected $primaryKey = 'university_id';
     protected $fillable = ['country_id', 'university_name', 'city', 'is_active'];
-    
+
     protected $casts = [
         'is_active' => 'boolean'
     ];
