@@ -11,31 +11,48 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('program_applications', function (Blueprint $table) {
-            $table->engine = 'InnoDB';
+        // Check if table exists, if so update it, otherwise create it
+        if (Schema::hasTable('program_applications')) {
+            // Update existing table
+            Schema::table('program_applications', function (Blueprint $table) {
+                // Update the enum to include all required values
+                $table->enum('application_status', ['invite', 'accepted', 'excuse', 'approved_excuse', 'doesn_attend', 'attend', 'approved', 'rejected', 'completed', 'doesnt_respond'])->default('invite')->change();
 
-            // Primary Key
-            $table->id('application_program_id');
+                // Add excuse fields if they don't exist
+                if (!Schema::hasColumn('program_applications', 'excuse_reason')) {
+                    $table->text('excuse_reason')->nullable();
+                }
+                if (!Schema::hasColumn('program_applications', 'excuse_file')) {
+                    $table->string('excuse_file')->nullable();
+                }
+            });
+        } else {
+            // Create new table
+            Schema::create('program_applications', function (Blueprint $table) {
+                $table->engine = 'InnoDB';
 
-            // Application Details
-            $table->enum('application_status', ['invite', 'accepted', 'excuse', 'approved_excuse', 'doesn_attend', 'attend', 'pending', 'approved', 'rejected', 'completed'])->default('invite');
-            $table->decimal('attendece_mark', 5, 2)->nullable(); // Note: keeping original spelling as in ERD
-            $table->string('certificate_token')->nullable();
-            $table->text('comment')->nullable();
+                // Primary Key
+                $table->id('application_program_id');
 
-            // Excuse fields for student rejection
-            $table->text('excuse_reason')->nullable();
-            $table->string('excuse_file')->nullable();
+                // Application Details
+                $table->enum('application_status', ['invite', 'accepted', 'excuse', 'approved_excuse', 'doesn_attend', 'attend', 'approved', 'rejected', 'completed', 'doesnt_respond'])->default('invite');
+                $table->string('certificate_token')->nullable();
+                $table->text('comment')->nullable();
 
-            // Foreign Keys
-            $table->foreignId('student_id')->constrained('students', 'student_id')->onDelete('cascade');
-            $table->foreignId('program_id')->constrained('programs', 'program_id')->onDelete('cascade');
+                // Excuse fields for student rejection
+                $table->text('excuse_reason')->nullable();
+                $table->string('excuse_file')->nullable();
 
-            $table->timestamps();
+                // Foreign Keys
+                $table->foreignId('student_id')->constrained('students', 'student_id')->onDelete('cascade');
+                $table->foreignId('program_id')->constrained('programs', 'program_id')->onDelete('cascade');
 
-            // Ensure a student can only apply once per program
-            $table->unique(['student_id', 'program_id']);
-        });
+                $table->timestamps();
+
+                // Ensure a student can only apply once per program
+                $table->unique(['student_id', 'program_id']);
+            });
+        }
     }
 
     /**

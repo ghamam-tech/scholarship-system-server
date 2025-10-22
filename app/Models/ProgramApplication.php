@@ -15,15 +15,10 @@ class ProgramApplication extends Model
         'student_id',
         'program_id',
         'application_status',
-        'attendece_mark',
         'certificate_token',
         'comment',
         'excuse_reason',
         'excuse_file'
-    ];
-
-    protected $casts = [
-        'attendece_mark' => 'decimal:2',
     ];
 
     /**

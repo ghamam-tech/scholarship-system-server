@@ -71,9 +71,9 @@ class ProgramController extends Controller
                 $data['image_file'] = $imagePath;
             }
 
-            // Ensure boolean values are properly cast
-            $data['enable_qr_attendance'] = filter_var($data['enable_qr_attendance'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            $data['generate_certificates'] = filter_var($data['generate_certificates'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            // Handle boolean values for JSON
+            $data['enable_qr_attendance'] = (bool) ($data['enable_qr_attendance'] ?? false);
+            $data['generate_certificates'] = (bool) ($data['generate_certificates'] ?? false);
 
             // Generate QR URL if QR attendance is enabled
             if ($data['enable_qr_attendance']) {
@@ -141,19 +141,20 @@ class ProgramController extends Controller
             return response()->json(['message' => 'Program not found'], 404);
         }
 
+        // Simplified validation for JSON requests only
         $data = $request->validate([
             'title' => ['sometimes', 'string', 'max:255'],
-            'discription' => ['nullable', 'string'],
+            'discription' => ['sometimes', 'string'],
             'date' => ['sometimes', 'date'],
-            'location' => ['nullable', 'string', 'max:255'],
-            'country' => ['nullable', 'string', 'max:255'],
-            'category' => ['nullable', 'string', 'max:255'],
-            'image_file' => ['nullable', 'file', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:5120'], // 5MB max
-            'program_coordinatior_name' => ['nullable', 'string', 'max:255'],
-            'program_coordinatior_phone' => ['nullable', 'string', 'max:20'],
-            'program_coordinatior_email' => ['nullable', 'email', 'max:255'],
-            'start_date' => ['nullable', 'date'],
-            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'location' => ['sometimes', 'string', 'max:255'],
+            'country' => ['sometimes', 'string', 'max:255'],
+            'category' => ['sometimes', 'string', 'max:255'],
+            'program_coordinatior_name' => ['sometimes', 'string', 'max:255'],
+            'program_coordinatior_phone' => ['sometimes', 'string', 'max:20'],
+            'program_coordinatior_email' => ['sometimes', 'email', 'max:255'],
+            'start_date' => ['sometimes', 'date'],
+            'end_date' => ['sometimes', 'date', 'after_or_equal:start_date'],
+            'program_status' => ['sometimes', 'in:active,inactive,completed,cancelled'],
             'enable_qr_attendance' => ['sometimes', 'boolean'],
             'generate_certificates' => ['sometimes', 'boolean'],
         ]);
@@ -161,24 +162,25 @@ class ProgramController extends Controller
         try {
             DB::beginTransaction();
 
-            // Handle image file upload
-            if ($request->hasFile('image_file')) {
-                // Delete old image if exists
-                if ($program->image_file && Storage::disk('public')->exists($program->image_file)) {
-                    Storage::disk('public')->delete($program->image_file);
-                }
+            // Debug logging
+            \Log::info('Update Request Data:', $data);
+            \Log::info('Request All Data:', $request->all());
 
-                $imageFile = $request->file('image_file');
-                $imagePath = $imageFile->store('programs/images', 'public');
-                $data['image_file'] = $imagePath;
-            }
-
-            // Ensure boolean values are properly cast for updates
+            // Handle boolean values for JSON
             if (isset($data['enable_qr_attendance'])) {
-                $data['enable_qr_attendance'] = filter_var($data['enable_qr_attendance'], FILTER_VALIDATE_BOOLEAN);
+                $data['enable_qr_attendance'] = (bool) $data['enable_qr_attendance'];
             }
+
             if (isset($data['generate_certificates'])) {
-                $data['generate_certificates'] = filter_var($data['generate_certificates'], FILTER_VALIDATE_BOOLEAN);
+                $data['generate_certificates'] = (bool) $data['generate_certificates'];
+            }
+
+            // Handle program_status updates
+            if (isset($data['program_status'])) {
+                $validStatuses = ['active', 'inactive', 'completed', 'cancelled'];
+                if (!in_array($data['program_status'], $validStatuses)) {
+                    unset($data['program_status']);
+                }
             }
 
             // Generate QR URL if QR attendance is being enabled
@@ -186,16 +188,21 @@ class ProgramController extends Controller
                 $data['qr_url'] = $this->generateQRUrl();
             }
 
+            // Debug: Log what data we're about to update
+            \Log::info('Data being sent to update:', $data);
+
+            // Update the program
             $program->update($data);
 
             DB::commit();
 
             return response()->json([
                 'message' => 'Program updated successfully',
-                'program' => $this->formatProgramResponse($program->load('programApplications'))
+                'program' => $this->formatProgramResponse($program->fresh()->load('programApplications'))
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
+            \Log::error('Update failed:', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json([
                 'message' => 'Failed to update program',
                 'error' => $e->getMessage()

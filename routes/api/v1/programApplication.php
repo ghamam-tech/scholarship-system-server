@@ -15,9 +15,8 @@ use App\Http\Controllers\ProgramApplicationController;
 
 // Admin-only routes - require authentication and admin role
 Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
-    // Invite students to program
-    Route::post('admin/programs/{programId}/invite', [ProgramApplicationController::class, 'inviteStudent']);
-    Route::post('admin/programs/{programId}/invite-multiple', [ProgramApplicationController::class, 'inviteMultipleStudents']);
+    // Invite students to program (single or multiple)
+    Route::post('admin/programs/{programId}/invite', [ProgramApplicationController::class, 'inviteMultipleStudents']);
 
     // Manage student excuses
     Route::patch('admin/applications/{applicationId}/approve-excuse', [ProgramApplicationController::class, 'approveExcuse']);

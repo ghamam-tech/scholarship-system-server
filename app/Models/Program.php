@@ -79,7 +79,7 @@ class Program extends Model
     public function students()
     {
         return $this->belongsToMany(Student::class, 'program_applications', 'program_id', 'student_id')
-            ->withPivot(['application_status', 'attendece_mark', 'certificate_token', 'comment'])
+            ->withPivot(['application_status', 'certificate_token', 'comment'])
             ->withTimestamps();
     }
 }

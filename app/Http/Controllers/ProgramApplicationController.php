@@ -13,59 +13,6 @@ use Illuminate\Support\Facades\Hash;
 
 class ProgramApplicationController extends Controller
 {
-    /**
-     * Admin: Invite student to program
-     */
-    public function inviteStudent(Request $request, $programId)
-    {
-        $user = $request->user();
-
-        // Check if user is admin
-        if (!$user || $user->role !== UserRole::ADMIN) {
-            return response()->json(['message' => 'Only admins can invite students'], 403);
-        }
-
-        $data = $request->validate([
-            'student_id' => ['required', 'integer', 'exists:students,student_id'],
-        ]);
-
-        $program = Program::find($programId);
-        if (!$program) {
-            return response()->json(['message' => 'Program not found'], 404);
-        }
-
-        $student = Student::find($data['student_id']);
-        if (!$student) {
-            return response()->json(['message' => 'Student not found'], 404);
-        }
-
-        // Check if invitation already exists
-        $existingApplication = ProgramApplication::where('student_id', $data['student_id'])
-            ->where('program_id', $programId)
-            ->first();
-
-        if ($existingApplication) {
-            return response()->json(['message' => 'Student already invited to this program'], 409);
-        }
-
-        try {
-            $application = ProgramApplication::create([
-                'student_id' => $data['student_id'],
-                'program_id' => $programId,
-                'application_status' => 'invite'
-            ]);
-
-            return response()->json([
-                'message' => 'Student invited successfully',
-                'application' => $application->load(['student.user', 'program'])
-            ], 201);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Failed to invite student',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
 
     /**
      * Admin: Invite multiple students to program
