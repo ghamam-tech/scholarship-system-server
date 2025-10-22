@@ -13,6 +13,7 @@ use App\Enums\ApplicationStatus;
 use App\Enums\UserRole;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class ApprovedApplicantApplicationController extends Controller
 {
@@ -137,6 +138,93 @@ class ApprovedApplicantApplicationController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Failed to finalize approval',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function respondToScholarship(Request $request)
+    {
+        $user = $request->user();
+
+        $data = $request->validate([
+            'approved_application_id' => ['required', 'exists:approved_applicant_applications,approved_application_id'],
+            'decision' => ['required', Rule::in(['accept', 'reject'])],
+            'comment' => ['nullable', 'string', 'max:1000'], // optional status note
+        ]);
+
+        try {
+            return DB::transaction(function () use ($data, $user) {
+                // Load the approval (must belong to this user)
+                $approval = ApprovedApplicantApplication::with(['application', 'scholarship'])
+                    ->where('approved_application_id', $data['approved_application_id'])
+                    ->where('user_id', $user->user_id)
+                    ->first();
+
+                if (!$approval) {
+                    return response()->json(['message' => 'Approval record not found for this user'], 404);
+                }
+
+                if ($data['decision'] === 'accept') {
+                    // If already accepted, conflict
+                    if ($approval->has_accepted_scholarship) {
+                        return response()->json(['message' => 'Scholarship already accepted'], 409);
+                    }
+
+                    // 1) Mark accepted
+                    $approval->update(['has_accepted_scholarship' => true]);
+
+                    // 2) Status trail
+                    ApplicantApplicationStatus::create([
+                        'user_id' => $user->user_id,
+                        'status_name' => ApplicationStatus::ACCEPTED_SCHOLARSHIP->value,
+                        'date' => now(),
+                        'comment' => $data['comment'] ?? 'Student accepted the scholarship',
+                    ]);
+
+                    return response()->json([
+                        'message' => 'Scholarship accepted successfully',
+                        'approval' => $approval->fresh(),
+                    ]);
+                }
+
+                // decision === 'reject'
+                // 1) Delete the student record (by approved_application_id if present; fallback by user_id)
+                $student = Student::where('approved_application_id', $approval->approved_application_id)->first();
+
+                if (!$student) {
+                    // fallback: some setups may link student only via user_id
+                    $student = Student::where('user_id', $user->user_id)->first();
+                }
+
+                if ($student) {
+                    $student->delete();
+                }
+
+                // 2) Revert user role to APPLICANT
+                // supports both enum-cast and raw-string setups
+                $user->role = is_object($user->role) ? UserRole::APPLICANT : UserRole::APPLICANT->value;
+                $user->save();
+
+                // 3) Delete the approval record
+                // (Do this after deleting Student to avoid FK issues, even though you used nullOnDelete)
+                $approval->delete();
+
+                // 4) Status trail
+                ApplicantApplicationStatus::create([
+                    'user_id' => $user->user_id,
+                    'status_name' => ApplicationStatus::REJECTED_SCHOLARSHIP->value,
+                    'date' => now(),
+                    'comment' => $data['comment'] ?? 'Student rejected the scholarship',
+                ]);
+
+                return response()->json([
+                    'message' => 'Scholarship rejected successfully. Student record removed and role reverted to applicant.',
+                ]);
+            });
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to process scholarship response',
                 'error' => $e->getMessage(),
             ], 500);
         }
