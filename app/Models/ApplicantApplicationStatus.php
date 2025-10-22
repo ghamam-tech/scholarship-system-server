@@ -7,14 +7,14 @@ use Illuminate\Database\Eloquent\Model;
 class ApplicantApplicationStatus extends Model
 {
     protected $primaryKey = 'applicationStatus_id';
-    protected $fillable = ['application_id','status_name','date','comment'];
+    protected $fillable = ['user_id', 'status_name', 'date', 'comment'];
 
     protected $casts = [
         'date' => 'datetime',
     ];
 
-    public function application()
+    public function user()
     {
-        return $this->belongsTo(ApplicantApplication::class, 'application_id', 'application_id');
+        return $this->belongsTo(User::class, 'user_id', 'user_id');
     }
 }

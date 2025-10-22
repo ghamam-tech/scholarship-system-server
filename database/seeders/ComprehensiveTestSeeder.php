@@ -255,7 +255,7 @@ class ComprehensiveTestSeeder extends Seeder
 
             // Create application status
             ApplicantApplicationStatus::create([
-                'application_id' => $application->application_id,
+                'user_id' => $applicant->user_id,
                 'status_name' => ApplicationStatus::ENROLLED->value,
                 'status_date' => now(),
                 'notes' => 'Application submitted successfully'

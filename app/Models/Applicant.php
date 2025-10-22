@@ -38,11 +38,17 @@ class Applicant extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id', 'user_id');
     }
 
     public function applications()
     {
         return $this->hasMany(ApplicantApplication::class, 'applicant_id', 'applicant_id');
+    }
+
+    public function qualifications()
+    {
+        // qualifications.user_id === applicants.user_id
+        return $this->hasMany(Qualification::class, 'user_id', 'user_id');
     }
 }

@@ -280,11 +280,12 @@ class ApplicantApplicationSeeder extends Seeder
 
     private function createApplicationStatuses(ApplicantApplication $application): void
     {
+        $userId = $application->applicant->user_id;
         $statuses = [];
         $currentDate = $application->created_at->copy();
 
         $statuses[] = [
-            'application_id' => $application->application_id,
+            'user_id' => $userId,
             'status_name' => ApplicationStatus::ENROLLED->value,
             'date' => $currentDate,
             'comment' => 'Application submitted successfully',
@@ -292,22 +293,21 @@ class ApplicantApplicationSeeder extends Seeder
             'updated_at' => $currentDate,
         ];
 
-        $possibleStatuses = [
+        $possible = [
             ApplicationStatus::FIRST_APPROVAL->value,
             ApplicationStatus::SECOND_APPROVAL->value,
             ApplicationStatus::FINAL_APPROVAL->value,
             ApplicationStatus::REJECTED->value,
         ];
 
-        foreach ($possibleStatuses as $status) {
-            if (rand(0, 100) > 70) {
+        foreach ($possible as $status) {
+            if (rand(0, 100) > 70)
                 break;
-            }
 
             $currentDate = $currentDate->copy()->addDays(rand(2, 7));
 
             $statuses[] = [
-                'application_id' => $application->application_id,
+                'user_id' => $userId,
                 'status_name' => $status,
                 'date' => $currentDate,
                 'comment' => $this->getStatusComment($status),
@@ -315,9 +315,8 @@ class ApplicantApplicationSeeder extends Seeder
                 'updated_at' => $currentDate,
             ];
 
-            if ($status === ApplicationStatus::REJECTED->value) {
+            if ($status === ApplicationStatus::REJECTED->value)
                 break;
-            }
         }
 
         ApplicantApplicationStatus::insert($statuses);

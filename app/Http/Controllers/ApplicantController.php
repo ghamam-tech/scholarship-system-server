@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Applicant;
 use App\Models\Qualification;
+use App\Models\Appointment;
 use App\Enums\UserRole;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -453,7 +454,7 @@ class ApplicantController extends Controller
     {
         $user = $request->user();
 
-        // Check if user is an applicant
+        // 0) Authz: must be applicant
         if (!$user || $user->role !== UserRole::APPLICANT) {
             return response()->json(['message' => 'Only applicants can view their status'], 403);
         }
@@ -463,72 +464,58 @@ class ApplicantController extends Controller
             return response()->json(['message' => 'Applicant profile not found'], 404);
         }
 
-        // Debug: Log user and applicant info
-        Log::info('User ID: ' . $user->user_id . ', Applicant ID: ' . ($applicant ? $applicant->applicant_id : 'null'));
+        // 1) Profile completion
+        $isCompleted = (bool) ($applicant->is_completed ?? false);
 
-        // 1. Check if profile is completed
-        $isCompleted = $applicant->is_completed ?? false;
-
-        // 2. Check application statuses
         $haveFirstApproval = false;
         $hasActiveApplication = false;
         $appointment = null;
 
         if ($isCompleted) {
-            // Get the latest status for any application
-            $latestStatus = $applicant->applications()
-                ->with([
-                    'statuses' => function ($query) {
-                        $query->orderBy('date', 'desc')->orderBy('created_at', 'desc');
-                    }
-                ])
-                ->get()
-                ->flatMap(function ($application) {
-                    return $application->statuses;
-                })
-                ->sortByDesc('date')
-                ->sortByDesc('created_at')
-                ->first();
+            // 2) Latest status at USER level (eager-load is cheap here)
+            $user->load('currentStatus');
+            $latestStatus = $user->currentStatus; // may be null if no applications/statuses yet
 
-            // Debug: Check what status we actually have
             if ($latestStatus) {
                 Log::info('Latest status found: ' . $latestStatus->status_name);
 
-                // Check if current status is first_approval
-                if ($latestStatus->status_name === 'first_approval') {
+                // a) first_approval flag
+                if (in_array($latestStatus->status_name, ['first_approval', 'meeting_scheduled'], true)) {
                     $haveFirstApproval = true;
                 }
 
-                // Check if has active application (enrolled, first_approval, meeting_scheduled, second_approval, final_approval)
-                if (in_array($latestStatus->status_name, ['enrolled', 'first_approval', 'meeting_scheduled', 'second_approval', 'final_approval'])) {
+                // b) active application flag
+                if (
+                    in_array(
+                        $latestStatus->status_name,
+                        ['enrolled', 'first_approval', 'meeting_scheduled', 'second_approval', 'final_approval'],
+                        true
+                    )
+                ) {
                     $hasActiveApplication = true;
                 }
             } else {
                 Log::info('No latest status found - applicant has no applications yet');
             }
 
-            // 3. Check appointments based on status
-            $appointment = null;
-
+            // 3) Appointment logic
             if ($haveFirstApproval || ($latestStatus && $latestStatus->status_name === 'meeting_scheduled')) {
-                // Check for booked appointment first
-                $bookedAppointment = \App\Models\Appointment::where('user_id', $user->user_id)
+                // Check for a *booked* future appointment
+                $bookedAppointment = Appointment::where('user_id', $user->user_id)
                     ->where('status', 'booked')
                     ->where('starts_at_utc', '>', now())
                     ->first();
 
                 if ($bookedAppointment) {
-                    // User has a booked appointment
-                    $appointment = $bookedAppointment;
+                    $appointment = $bookedAppointment; // format later
                 } else {
-                    // User has first approval but no booked appointment, return available appointments
-                    $availableAppointments = \App\Models\Appointment::where('status', 'available')
+                    // No booked slot; provide available upcoming slots
+                    $availableAppointments = Appointment::where('status', 'available')
                         ->where('starts_at_utc', '>', now())
                         ->orderBy('starts_at_utc')
                         ->get();
 
                     if ($availableAppointments->count() > 0) {
-                        // Get applicant's timezone for display
                         $applicantTimezone = $user->timezone ?? 'UTC';
 
                         $appointment = [
@@ -552,19 +539,14 @@ class ApplicantController extends Controller
                                     'meeting_url' => $apt->meeting_url,
                                     'status' => $apt->status,
                                 ];
-                            })->toArray()
+                            })->toArray(),
                         ];
                     }
                 }
             }
 
-            // Debug: Check appointment search
-            Log::info('Looking for appointment for user_id: ' . $user->user_id);
-            Log::info('Found appointment: ' . ($appointment ? 'Yes' : 'No'));
-
-            // Format booked appointment if found
+            // 4) If we found a booked appointment, format it for response
             if ($appointment && !isset($appointment['type'])) {
-                // Get applicant's timezone for display
                 $applicantTimezone = $user->timezone ?? 'UTC';
                 $startsAtLocal = $appointment->starts_at_utc->setTimezone($applicantTimezone);
                 $endsAtLocal = $appointment->ends_at_utc->setTimezone($applicantTimezone);
@@ -595,4 +577,5 @@ class ApplicantController extends Controller
             'appointment' => $appointment,
         ]);
     }
+
 }
