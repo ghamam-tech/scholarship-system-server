@@ -33,7 +33,8 @@ class Applicant extends Model
         'qudorat_file',
         'tahseeli_percentage',
         'qudorat_percentage',
-        'is_completed'
+        'is_completed',
+        'is_archive',
     ];
 
     public function user()
@@ -50,5 +51,10 @@ class Applicant extends Model
     {
         // qualifications.user_id === applicants.user_id
         return $this->hasMany(Qualification::class, 'user_id', 'user_id');
+    }
+
+    public function student()
+    {
+        return $this->hasOne(Student::class, 'applicant_id', 'applicant_id');
     }
 }
