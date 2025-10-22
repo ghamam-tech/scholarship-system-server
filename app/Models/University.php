@@ -8,7 +8,7 @@ class University extends Model
 {
     protected $primaryKey = 'university_id';
     protected $fillable = ['country_id', 'university_name', 'city', 'is_active'];
-    
+
     protected $casts = [
         'is_active' => 'boolean'
     ];
@@ -29,5 +29,10 @@ class University extends Model
             'university_id',
             'scholarship_id'
         );
+    }
+
+    public function students()
+    {
+        return $this->hasMany(Student::class, 'university_id', 'university_id');
     }
 }

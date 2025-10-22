@@ -12,6 +12,10 @@ class Student extends Model
         'user_id',
         'applicant_id',
         'approved_application_id',
+        'specialization',
+        'offer_letter',
+        'country_id',
+        'university_id',
     ];
 
     // Relationships
@@ -28,5 +32,15 @@ class Student extends Model
     public function approvedApplication()
     {
         return $this->belongsTo(ApprovedApplicantApplication::class, 'approved_application_id', 'approved_application_id');
+    }
+
+    public function country()
+    {
+        return $this->belongsTo(Country::class, 'country_id', 'country_id');
+    }
+
+    public function university()
+    {
+        return $this->belongsTo(University::class, 'university_id', 'university_id');
     }
 }

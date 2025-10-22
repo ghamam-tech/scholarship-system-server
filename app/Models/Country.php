@@ -8,7 +8,7 @@ class Country extends Model
 {
     protected $primaryKey = 'country_id';
     protected $fillable = ['country_name', 'country_code', 'is_active'];
-    
+
     protected $casts = [
         'is_active' => 'boolean'
     ];
@@ -23,11 +23,16 @@ class Country extends Model
     {
         return $this->belongsToMany(
             Scholarship::class,
-            'country_scholarship', 
+            'country_scholarship',
             'country_id',
             'scholarship_id',
             'country_id',
             'scholarship_id'
         );
+    }
+
+    public function students()
+    {
+        return $this->hasMany(Student::class, 'country_id', 'country_id');
     }
 }
