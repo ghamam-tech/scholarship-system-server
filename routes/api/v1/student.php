@@ -9,5 +9,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/admin/students/{studentId}/warning/second', [StudentController::class, 'issueSecondWarning']);
         Route::post('/admin/students/{studentId}/terminate', [StudentController::class, 'terminateStudent']);
         Route::post('/admin/students/{studentId}/graduate', [StudentController::class, 'graduateStudent']);
+        Route::post('/admin/students/{studentId}/request-meeting', [StudentController::class, 'requestMeeting']);
     });
 });

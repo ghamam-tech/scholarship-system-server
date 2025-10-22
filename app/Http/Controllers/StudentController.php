@@ -220,4 +220,47 @@ class StudentController extends Controller
             ], 500);
         }
     }
+
+    public function requestMeeting(Request $request, $studentId)
+    {
+        // Admin gate
+        $auth = $request->user();
+        $roleVal = is_object($auth->role) ? $auth->role->value : (string) $auth->role;
+        if ($roleVal !== UserRole::ADMIN->value) {
+            return response()->json(['message' => 'Only admins can request meetings'], 403);
+        }
+
+        $data = $request->validate([
+            'comment' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        try {
+            return DB::transaction(function () use ($studentId, $data) {
+                $student = Student::with('user')->findOrFail($studentId);
+                $user = $student->user;
+
+                if (!$user) {
+                    return response()->json(['message' => 'Linked user not found for this student'], 422);
+                }
+
+                ApplicantApplicationStatus::create([
+                    'user_id' => $user->user_id,
+                    'status_name' => ApplicationStatus::MEETING_REQUESTED->value,
+                    'date' => now(),
+                    'comment' => $data['comment'] ?? 'Meeting requested by admin',
+                ]);
+
+                return response()->json([
+                    'message' => 'Meeting requested.',
+                    'studentId' => $student->student_id,
+                    'userId' => $user->user_id,
+                ]);
+            });
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to request meeting',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
 }
