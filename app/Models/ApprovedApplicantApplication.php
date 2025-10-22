@@ -16,6 +16,11 @@ class ApprovedApplicantApplication extends Model
         'user_id',
     ];
 
+    protected $casts = [
+        'benefits' => 'array',
+        'has_accepted_scholarship' => 'boolean',
+    ];
+
     // Relationships
     public function scholarship()
     {

@@ -18,7 +18,10 @@ class DatabaseSeeder extends Seeder
             SponsorSeeder::class,           // Sponsors must come first
             ScholarshipSeeder::class,       // Then scholarships
             AdminSeeder::class,             // Then admin users
-            ApplicantApplicationSeeder::class, // Finally applicants and applications
+            ApplicantApplicationSeeder::class, // Then applicants and applications
+            ApprovedApplicantApplicationSeeder::class, // Create approved applications
+            StudentSeeder::class,           // Create students from approved applicants
+            ProgramSeeder::class,           // Create programs
         ]);
     }
 }
