@@ -33,12 +33,13 @@ class Applicant extends Model
         'qudorat_file',
         'tahseeli_percentage',
         'qudorat_percentage',
-        'is_completed'
+        'is_completed',
+        'is_archive',
     ];
 
     public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id', 'user_id');
     }
 
     public function applications()
@@ -48,6 +49,12 @@ class Applicant extends Model
 
     public function qualifications()
     {
-        return $this->hasMany(Qualification::class, 'applicant_id', 'applicant_id');
+        // qualifications.user_id === applicants.user_id
+        return $this->hasMany(Qualification::class, 'user_id', 'user_id');
+    }
+
+    public function student()
+    {
+        return $this->hasOne(Student::class, 'applicant_id', 'applicant_id');
     }
 }

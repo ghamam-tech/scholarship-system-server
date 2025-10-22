@@ -41,23 +41,27 @@ class ApplicantApplication extends Model
         return $this->belongsTo(Scholarship::class, 'scholarship_id', 'scholarship_id');
     }
 
-    // ... keep other methods the same
-    public function statuses()
+    public function userCurrentStatus(): ?ApplicantApplicationStatus
     {
-        return $this->hasMany(ApplicantApplicationStatus::class, 'application_id', 'application_id')
-            ->orderBy('created_at', 'desc');
-    }
+        // If everything was eager-loaded: applicant.user.currentStatus
+        if (
+            $this->relationLoaded('applicant')
+            && optional($this->applicant)->relationLoaded('user')
+            && optional($this->applicant->user)->relationLoaded('currentStatus')
+        ) {
+            return $this->applicant->user->currentStatus;
+        }
 
-    public function currentStatus()
-    {
-        return $this->hasOne(ApplicantApplicationStatus::class, 'application_id', 'application_id')
-            ->latest('date');
+        // Fallback: single query (avoid in loops; prefer eager-loading in controllers)
+        $user = optional($this->applicant)->user;
+        return $user ? $user->currentStatus()->first() : null;
     }
 
     // Helper methods
-    public function isFinalApproval()
+    public function isFinalApproval(): bool
     {
-        return $this->currentStatus && $this->currentStatus->status_name === ApplicationStatus::FINAL_APPROVAL->value;
+        $cs = $this->userCurrentStatus();
+        return $cs && $cs->status_name === ApplicationStatus::FINAL_APPROVAL->value;
     }
 
     public function canBeRejected()
@@ -65,9 +69,9 @@ class ApplicantApplication extends Model
         return !$this->isFinalApproval();
     }
 
-    public function canScheduleMeeting()
+    public function canScheduleMeeting(): bool
     {
-        return $this->currentStatus &&
-            $this->currentStatus->status_name === ApplicationStatus::FIRST_APPROVAL->value;
+        $cs = $this->userCurrentStatus();
+        return $cs && $cs->status_name === ApplicationStatus::FIRST_APPROVAL->value;
     }
 }

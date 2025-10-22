@@ -3,7 +3,8 @@
 namespace Database\Factories;
 
 use App\Models\Qualification;
-use App\Models\Applicant;
+// use App\Models\Applicant;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -19,7 +20,7 @@ class QualificationFactory extends Factory
     public function definition(): array
     {
         return [
-            'applicant_id' => Applicant::factory(),
+            'user_id' => User::factory(),
             'qualification_type' => fake()->randomElement(['high_school', 'diploma', 'bachelor', 'master', 'phd', 'other']),
             'institute_name' => fake()->company() . ' University',
             'year_of_graduation' => fake()->numberBetween(2010, 2024),

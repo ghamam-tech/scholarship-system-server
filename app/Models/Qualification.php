@@ -20,11 +20,11 @@ class Qualification extends Model
         'specialization',
         'research_title',
         'document_file',
-        'applicant_id'
+        'user_id'
     ];
 
-    public function applicant()
+    public function user()
     {
-        return $this->belongsTo(Applicant::class, 'applicant_id', 'applicant_id');
+        return $this->belongsTo(User::class, 'user_id', 'user_id');
     }
 }

@@ -51,4 +51,23 @@ class User extends Authenticatable
     {
         return $this->hasOne(Admin::class, 'user_id', 'user_id');
     }
+
+    public function qualifications()
+    {
+        return $this->hasMany(Qualification::class, 'user_id', 'user_id');
+    }
+
+    public function statuses()
+    {
+        return $this->hasMany(ApplicantApplicationStatus::class, 'user_id', 'user_id')
+            ->orderBy('date', 'desc')         // prefer business date first
+            ->orderBy('created_at', 'desc');  // then tie-break
+    }
+
+    public function currentStatus()
+    {
+        // Ensures a single row using your business column 'date'
+        return $this->hasOne(ApplicantApplicationStatus::class, 'user_id', 'user_id')
+            ->latestOfMany(['date', 'created_at']);
+    }
 }

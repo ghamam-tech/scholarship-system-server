@@ -17,15 +17,14 @@ use Illuminate\Validation\Rule;
 
 class ApplicantApplicationController extends Controller
 {
-    
+
 
     public function store(Request $request)
     {
-        // At the start of store() in ApplicantApplicationController
         $request->merge([
             'program_details' => array_merge($request->input('program_details', []), [
-                'has_active_program'   => filter_var($request->input('program_details.has_active_program'), FILTER_VALIDATE_BOOLEAN),
-                'terms_and_condition'  => filter_var($request->input('program_details.terms_and_condition'), FILTER_VALIDATE_BOOLEAN),
+                'has_active_program' => filter_var($request->input('program_details.has_active_program'), FILTER_VALIDATE_BOOLEAN),
+                'terms_and_condition' => filter_var($request->input('program_details.terms_and_condition'), FILTER_VALIDATE_BOOLEAN),
             ]),
         ]);
 
@@ -35,38 +34,33 @@ class ApplicantApplicationController extends Controller
             return response()->json(['message' => 'Applicant profile not found. Please complete your profile first.'], 404);
         }
 
-        // Must have completed profile first
         if (!$applicant->is_completed) {
             return response()->json(['message' => 'Please complete your profile first before submitting an application'], 422);
         }
 
-        // Only one application per cycle (keep your rule here)
         if ($applicant->applications()->exists()) {
             return response()->json(['message' => 'You can only submit one application per scholarship cycle'], 422);
         }
 
         $data = $request->validate([
-            'program_details.scholarship_id'         => ['required', 'exists:scholarships,scholarship_id'],
-            'program_details.specialization_1'       => ['required', 'string', 'max:255'],
-            'program_details.specialization_2'       => ['nullable', 'string', 'max:255'],
-            'program_details.specialization_3'       => ['nullable', 'string', 'max:255'],
-            'program_details.university_name'        => ['required', 'string', 'max:255'],
-            'program_details.country_name'           => ['required', 'string', 'max:100'],
-            'program_details.tuition_fee'            => ['nullable', 'numeric', 'min:0'],
-            'program_details.has_active_program'     => ['required', 'boolean'],
+            'program_details.scholarship_id' => ['required', 'exists:scholarships,scholarship_id'],
+            'program_details.specialization_1' => ['required', 'string', 'max:255'],
+            'program_details.specialization_2' => ['nullable', 'string', 'max:255'],
+            'program_details.specialization_3' => ['nullable', 'string', 'max:255'],
+            'program_details.university_name' => ['required', 'string', 'max:255'],
+            'program_details.country_name' => ['required', 'string', 'max:100'],
+            'program_details.tuition_fee' => ['nullable', 'numeric', 'min:0'],
+            'program_details.has_active_program' => ['required', 'boolean'],
             'program_details.current_semester_number' => ['nullable', 'integer', 'min:1', 'max:20'],
-            'program_details.cgpa'                   => ['nullable', 'numeric', 'min:0', 'max:4'],
-            'program_details.cgpa_out_of'            => ['nullable', 'numeric', 'min:0'],
-            'program_details.terms_and_condition'    => ['required', 'accepted'],
-
-            // file key name you'll send from Postman: program_details.offer_letter
-            'program_details.offer_letter'           => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+            'program_details.cgpa' => ['nullable', 'numeric', 'min:0', 'max:4'],
+            'program_details.cgpa_out_of' => ['nullable', 'numeric', 'min:0'],
+            'program_details.terms_and_condition' => ['required', 'accepted'],
+            'program_details.offer_letter' => ['nullable', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
         ]);
 
         try {
             DB::beginTransaction();
 
-            // Validate the scholarship is open & active
             $scholarship = Scholarship::where('scholarship_id', $data['program_details']['scholarship_id'])
                 ->where('is_active', true)
                 ->where('opening_date', '<=', now())
@@ -77,29 +71,26 @@ class ApplicantApplicationController extends Controller
                 return response()->json(['message' => 'Selected scholarship is not available'], 422);
             }
 
-            // Create application first (no file yet)
             $application = ApplicantApplication::create([
-                'applicant_id'            => $applicant->applicant_id,
-                'scholarship_id'          => $data['program_details']['scholarship_id'],
-                'specialization_1'        => $data['program_details']['specialization_1'],
-                'specialization_2'        => $data['program_details']['specialization_2'] ?? null,
-                'specialization_3'        => $data['program_details']['specialization_3'] ?? null,
-                'university_name'         => $data['program_details']['university_name'],
-                'country_name'            => $data['program_details']['country_name'],
-                'tuition_fee'             => $data['program_details']['tuition_fee'] ?? null,
-                'has_active_program'      => $data['program_details']['has_active_program'],
+                'applicant_id' => $applicant->applicant_id,
+                'scholarship_id' => $data['program_details']['scholarship_id'],
+                'specialization_1' => $data['program_details']['specialization_1'],
+                'specialization_2' => $data['program_details']['specialization_2'] ?? null,
+                'specialization_3' => $data['program_details']['specialization_3'] ?? null,
+                'university_name' => $data['program_details']['university_name'],
+                'country_name' => $data['program_details']['country_name'],
+                'tuition_fee' => $data['program_details']['tuition_fee'] ?? null,
+                'has_active_program' => $data['program_details']['has_active_program'],
                 'current_semester_number' => $data['program_details']['current_semester_number'] ?? null,
-                'cgpa'                    => $data['program_details']['cgpa'] ?? null,
-                'cgpa_out_of'             => $data['program_details']['cgpa_out_of'] ?? null,
-                'terms_and_condition'     => $data['program_details']['terms_and_condition'],
+                'cgpa' => $data['program_details']['cgpa'] ?? null,
+                'cgpa_out_of' => $data['program_details']['cgpa_out_of'] ?? null,
+                'terms_and_condition' => $data['program_details']['terms_and_condition'],
             ]);
 
-            // Handle offer letter (optional)
             if ($request->hasFile('program_details.offer_letter')) {
-                $file     = $request->file('program_details.offer_letter');
+                $file = $request->file('program_details.offer_letter');
                 $filename = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
 
-                // nice structured path per applicant + application
                 $path = $file->storeAs(
                     "applications/{$applicant->applicant_id}/{$application->application_id}/offer-letter",
                     $filename,
@@ -111,29 +102,38 @@ class ApplicantApplicationController extends Controller
                 ]);
             }
 
-            // Initial status = ENROLLED
             ApplicantApplicationStatus::create([
-                'application_id' => $application->application_id,
-                'status_name'    => ApplicationStatus::ENROLLED->value,
-                'date'           => now(),
-                'comment'        => 'Application submitted',
+                'user_id' => $request->user()->user_id,
+                'status_name' => ApplicationStatus::ENROLLED->value,
+                'date' => now(),
+                'comment' => 'Application submitted',
             ]);
 
             DB::commit();
 
+            // Eager-load nested current status (user-level)
+            $application->load([
+                'scholarship',
+                'applicant.user.currentStatus',
+            ]);
+
+            $cs = optional(optional($application->applicant)->user)->currentStatus;
+
             return response()->json([
-                'message'     => 'Application submitted successfully',
-                'application' => $application->load(['currentStatus', 'scholarship']),
+                'message' => 'Application submitted successfully',
+                'application' => array_merge($application->toArray(), [
+                    'current_status' => $cs, // includes status_name, date, comment...
+                ]),
             ], 201);
+
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'message' => 'Failed to submit application',
-                'error'   => $e->getMessage(),
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
-
 
     /**
      * Update program details for an existing application
@@ -204,24 +204,30 @@ class ApplicantApplicationController extends Controller
      */
     public function addStatus(Request $request, $applicationId)
     {
-        $application = ApplicantApplication::with('currentStatus')->findOrFail($applicationId);
+        $application = ApplicantApplication::findOrFail($applicationId);
+        $userId = $application->applicant->user_id;
 
         $data = $request->validate([
             'status' => ['required', Rule::enum(ApplicationStatus::class)],
             'comment' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        if ($data['status'] === ApplicationStatus::REJECTED->value && !$application->canBeRejected()) {
-            return response()->json([
-                'message' => 'Cannot reject application after final approval'
-            ], 422);
+        // Block reject if already final_approval
+        $latest = ApplicantApplicationStatus::where('user_id', $userId)
+            ->orderBy('date', 'desc')->orderBy('created_at', 'desc')->first();
+
+        if (
+            $data['status'] === ApplicationStatus::REJECTED->value
+            && $latest && $latest->status_name === ApplicationStatus::FINAL_APPROVAL->value
+        ) {
+            return response()->json(['message' => 'Cannot reject application after final approval'], 422);
         }
 
         try {
             DB::beginTransaction();
 
             ApplicantApplicationStatus::create([
-                'application_id' => $applicationId,
+                'user_id' => $userId,
                 'status_name' => $data['status'],
                 'date' => now(),
                 'comment' => $data['comment'] ?? null,
@@ -229,18 +235,20 @@ class ApplicantApplicationController extends Controller
 
             DB::commit();
 
+            // if you still want "current_status", compute from user-level statuses:
+            $currentStatus = ApplicantApplicationStatus::where('user_id', $userId)
+                ->orderBy('date', 'desc')->orderBy('created_at', 'desc')->first();
+
             return response()->json([
                 'message' => 'Application status updated successfully',
-                'current_status' => $application->fresh()->currentStatus
+                'current_status' => $currentStatus,
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json([
-                'message' => 'Failed to update application status',
-                'error' => $e->getMessage()
-            ], 500);
+            return response()->json(['message' => 'Failed to update application status', 'error' => $e->getMessage()], 500);
         }
     }
+
 
     /**
      * Get application with full details
@@ -248,11 +256,10 @@ class ApplicantApplicationController extends Controller
     public function show(Request $request, $applicationId)
     {
         $application = ApplicantApplication::with([
-            'applicant.user',
+            'applicant.user.currentStatus',   // latest
+            'applicant.user',                 // needed to read user_id safely
             'applicant.qualifications',
             'scholarship',
-            'statuses',
-            'currentStatus'
         ])->findOrFail($applicationId);
 
         if (
@@ -262,7 +269,22 @@ class ApplicantApplicationController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        return response()->json($application);
+        $userId = optional(optional($application->applicant)->user)->user_id;
+
+        // If you want full trail on this screen:
+        $statusTrail = $userId
+            ? ApplicantApplicationStatus::where('user_id', $userId)
+                ->orderBy('date', 'desc')->orderBy('created_at', 'desc')
+                ->get()
+            : collect();
+
+        $cs = optional(optional($application->applicant)->user)->currentStatus;
+
+        return response()->json([
+            'application' => $application,
+            'status_trail' => $statusTrail,
+            'current_status' => $cs,
+        ]);
     }
 
     /**
@@ -278,15 +300,28 @@ class ApplicantApplicationController extends Controller
 
         $applications = ApplicantApplication::with([
             'scholarship',
-            'currentStatus',
             'applicant.qualifications',
-            'applicant'
-        ])->where('applicant_id', $applicant->applicant_id)
-            ->get();
+            'applicant.user.currentStatus',
+        ])
+            ->where('applicant_id', $applicant->applicant_id)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($application) {
+                $cs = optional(optional($application->applicant)->user)->currentStatus;
+
+                return array_merge($application->toArray(), [
+                    'current_status' => $cs
+                        ? [
+                            'status_name' => $cs->status_name,
+                            'date' => $cs->date,
+                            'comment' => $cs->comment,
+                        ]
+                        : null,
+                ]);
+            });
 
         return response()->json($applications);
     }
-
 
     /**
      * Delete application (Admin only)
@@ -302,9 +337,8 @@ class ApplicantApplicationController extends Controller
         try {
             DB::beginTransaction();
 
-            $application->statuses()->delete();
-
             if ($application->offer_letter_file) {
+                // ensure this column stores a PATH (not full URL)
                 Storage::disk('s3')->delete($application->offer_letter_file);
             }
 
@@ -312,9 +346,7 @@ class ApplicantApplicationController extends Controller
 
             DB::commit();
 
-            return response()->json([
-                'message' => 'Application deleted successfully'
-            ]);
+            return response()->json(['message' => 'Application deleted successfully']);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -333,23 +365,21 @@ class ApplicantApplicationController extends Controller
             return response()->json(['message' => 'Forbidden. Insufficient permissions.'], 403);
         }
 
+        $total = ApplicantApplication::count();
+
+        $countBy = function ($status) {
+            return ApplicantApplication::whereHas('applicant.user.currentStatus', function ($q) use ($status) {
+                $q->where('status_name', $status);
+            })->count();
+        };
+
         $stats = [
-            'total_applications' => ApplicantApplication::count(),
-            'enrolled' => ApplicantApplication::whereHas('currentStatus', function ($q) {
-                $q->where('status_name', ApplicationStatus::ENROLLED->value);
-            })->count(),
-            'first_approval' => ApplicantApplication::whereHas('currentStatus', function ($q) {
-                $q->where('status_name', ApplicationStatus::FIRST_APPROVAL->value);
-            })->count(),
-            'second_approval' => ApplicantApplication::whereHas('currentStatus', function ($q) {
-                $q->where('status_name', ApplicationStatus::SECOND_APPROVAL->value);
-            })->count(),
-            'final_approval' => ApplicantApplication::whereHas('currentStatus', function ($q) {
-                $q->where('status_name', ApplicationStatus::FINAL_APPROVAL->value);
-            })->count(),
-            'rejected' => ApplicantApplication::whereHas('currentStatus', function ($q) {
-                $q->where('status_name', ApplicationStatus::REJECTED->value);
-            })->count(),
+            'total_applications' => $total,
+            'enrolled' => $countBy(ApplicationStatus::ENROLLED->value),
+            'first_approval' => $countBy(ApplicationStatus::FIRST_APPROVAL->value),
+            'second_approval' => $countBy(ApplicationStatus::SECOND_APPROVAL->value),
+            'final_approval' => $countBy(ApplicationStatus::FINAL_APPROVAL->value),
+            'rejected' => $countBy(ApplicationStatus::REJECTED->value),
         ];
 
         return response()->json($stats);
@@ -408,7 +438,9 @@ class ApplicantApplicationController extends Controller
      */
     private function getLatestStatus($application)
     {
-        return $application->statuses()
+        $userId = $application->applicant->user_id;
+
+        return ApplicantApplicationStatus::where('user_id', $userId)
             ->orderBy('date', 'desc')
             ->orderBy('created_at', 'desc')
             ->first();
@@ -420,45 +452,31 @@ class ApplicantApplicationController extends Controller
     public function submittedApplications(Request $request)
     {
         $user = $request->user();
-
-        // Check if user is admin
         if (!$user || $user->role !== UserRole::ADMIN) {
             return response()->json(['message' => 'Only admins can view submitted applications'], 403);
         }
 
         $applications = ApplicantApplication::with([
-            'applicant.user',
+            'applicant.user.currentStatus',
             'scholarship',
             'scholarship.countries',
-            'currentStatus' => function ($query) {
-                $query->latest('date');
-            }
         ])
+            ->whereHas('applicant.user.currentStatus', function ($q) {
+                $q->where('status_name', ApplicationStatus::ENROLLED->value);
+            })
             ->orderBy('created_at', 'desc')
             ->get()
-            ->filter(function ($application) {
-                // Get the latest status for this application
-                $latestStatus = $this->getLatestStatus($application);
-                return $latestStatus && $latestStatus->status_name === 'enrolled';
-            })
             ->map(function ($application) {
                 $applicant = $application->applicant;
                 $scholarship = $application->scholarship;
-
-                // Safe access to relationships
-                $user = $applicant ? $applicant->user : null;
                 $countries = $scholarship ? $scholarship->countries : collect();
-
-                // Get first country (or null if no countries)
                 $firstCountry = $countries->first();
 
-                // Format CGPA
                 $cgpa = $application->cgpa;
                 $cgpaOutOf = $application->cgpa_out_of;
                 $cgpaFormatted = $cgpa && $cgpaOutOf ? "{$cgpa}/{$cgpaOutOf}" : null;
 
-                // Get the latest status
-                $latestStatus = $this->getLatestStatus($application);
+                $cs = optional(optional($applicant)->user)->currentStatus;
 
                 return [
                     'application_id' => $application->application_id,
@@ -471,13 +489,12 @@ class ApplicantApplicationController extends Controller
                     'country_name' => $firstCountry ? $firstCountry->country_name : 'N/A',
                     'cgpa' => $cgpaFormatted,
                     'program_type' => $scholarship ? ($scholarship->scholarship_type ?? 'N/A') : 'N/A',
-                    'current_status' => $latestStatus ? $latestStatus->status_name : 'N/A',
-                    'status_date' => $latestStatus ? $latestStatus->date : null,
-                    'status_comment' => $latestStatus ? $latestStatus->comment : null,
+                    'current_status' => $cs->status_name ?? 'N/A',
+                    'status_date' => $cs->date ?? null,
+                    'status_comment' => $cs->comment ?? null,
                 ];
             });
 
-        // Count applications by status
         $statusCounts = $applications->groupBy('current_status')->map->count();
 
         return response()->json([
@@ -500,46 +517,35 @@ class ApplicantApplicationController extends Controller
         ]);
     }
 
+
     /**
      * Get all applications with same output format as submittedApplications (admin only)
      */
     public function getAllApplications(Request $request)
     {
         $user = $request->user();
-
-        // Check if user is admin
         if (!$user || $user->role !== UserRole::ADMIN) {
             return response()->json(['message' => 'Only admins can view all applications'], 403);
         }
 
         $applications = ApplicantApplication::with([
-            'applicant.user',
+            'applicant.user.currentStatus',
             'scholarship',
             'scholarship.countries',
-            'currentStatus' => function ($query) {
-                $query->latest('date');
-            }
         ])
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($application) {
                 $applicant = $application->applicant;
                 $scholarship = $application->scholarship;
-
-                // Safe access to relationships
-                $user = $applicant ? $applicant->user : null;
                 $countries = $scholarship ? $scholarship->countries : collect();
-
-                // Get first country (or null if no countries)
                 $firstCountry = $countries->first();
 
-                // Format CGPA
                 $cgpa = $application->cgpa;
                 $cgpaOutOf = $application->cgpa_out_of;
                 $cgpaFormatted = $cgpa && $cgpaOutOf ? "{$cgpa}/{$cgpaOutOf}" : null;
 
-                // Get the latest status
-                $latestStatus = $this->getLatestStatus($application);
+                $cs = optional(optional($applicant)->user)->currentStatus;
 
                 return [
                     'application_id' => $application->application_id,
@@ -552,13 +558,12 @@ class ApplicantApplicationController extends Controller
                     'country_name' => $firstCountry ? $firstCountry->country_name : 'N/A',
                     'cgpa' => $cgpaFormatted,
                     'program_type' => $scholarship ? ($scholarship->scholarship_type ?? 'N/A') : 'N/A',
-                    'current_status' => $latestStatus ? $latestStatus->status_name : 'N/A',
-                    'status_date' => $latestStatus ? $latestStatus->date : null,
-                    'status_comment' => $latestStatus ? $latestStatus->comment : null,
+                    'current_status' => $cs->status_name ?? 'N/A',
+                    'status_date' => $cs->date ?? null,
+                    'status_comment' => $cs->comment ?? null,
                 ];
             });
 
-        // Count applications by status
         $statusCounts = $applications->groupBy('current_status')->map->count();
 
         return response()->json([
@@ -587,40 +592,28 @@ class ApplicantApplicationController extends Controller
     public function getAllApplicationsWithStatus(Request $request)
     {
         $user = $request->user();
-
-        // Check if user is admin
         if (!$user || $user->role !== UserRole::ADMIN) {
             return response()->json(['message' => 'Only admins can view all applications'], 403);
         }
 
         $applications = ApplicantApplication::with([
-            'applicant.user',
+            'applicant.user.currentStatus',
             'scholarship',
             'scholarship.countries',
-            'currentStatus' => function ($query) {
-                $query->latest('date');
-            }
         ])
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($application) {
                 $applicant = $application->applicant;
                 $scholarship = $application->scholarship;
-
-                // Safe access to relationships
-                $user = $applicant ? $applicant->user : null;
                 $countries = $scholarship ? $scholarship->countries : collect();
-
-                // Get first country (or null if no countries)
                 $firstCountry = $countries->first();
 
-                // Format CGPA
                 $cgpa = $application->cgpa;
                 $cgpaOutOf = $application->cgpa_out_of;
                 $cgpaFormatted = $cgpa && $cgpaOutOf ? "{$cgpa}/{$cgpaOutOf}" : null;
 
-                // Get the latest status
-                $latestStatus = $this->getLatestStatus($application);
+                $cs = optional(optional($applicant)->user)->currentStatus;
 
                 return [
                     'application_id' => $application->application_id,
@@ -633,13 +626,12 @@ class ApplicantApplicationController extends Controller
                     'country_name' => $firstCountry ? $firstCountry->country_name : 'N/A',
                     'cgpa' => $cgpaFormatted,
                     'program_type' => $scholarship ? ($scholarship->scholarship_type ?? 'N/A') : 'N/A',
-                    'current_status' => $latestStatus ? $latestStatus->status_name : 'N/A',
-                    'status_date' => $latestStatus ? $latestStatus->date : null,
-                    'status_comment' => $latestStatus ? $latestStatus->comment : null,
+                    'current_status' => $cs->status_name ?? 'N/A',
+                    'status_date' => $cs->date ?? null,
+                    'status_comment' => $cs->comment ?? null,
                 ];
             });
 
-        // Count applications by status
         $statusCounts = $applications->groupBy('current_status')->map->count();
 
         return response()->json([
@@ -666,51 +658,42 @@ class ApplicantApplicationController extends Controller
     public function firstApproval(Request $request)
     {
         $user = $request->user();
-
-        // Check if user is admin
         if (!$user || $user->role !== UserRole::ADMIN) {
             return response()->json(['message' => 'Only admins can view first approval applications'], 403);
         }
 
         $applications = ApplicantApplication::with([
-            'applicant.user',
+            'applicant.user.currentStatus',
             'scholarship',
-            'currentStatus' => function ($query) {
-                $query->latest('date');
-            }
         ])
+            ->whereHas('applicant.user.currentStatus', function ($q) {
+                $q->whereIn('status_name', [
+                    ApplicationStatus::FIRST_APPROVAL->value,
+                    ApplicationStatus::MEETING_SCHEDULED->value,
+                ]);
+            })
             ->orderBy('created_at', 'desc')
             ->get()
-            ->filter(function ($application) {
-                // Get the latest status for this application
-                $latestStatus = $this->getLatestStatus($application);
-                return $latestStatus && in_array($latestStatus->status_name, ['first_approval', 'meeting_scheduled']);
-            })
             ->map(function ($application) use ($user) {
                 $applicant = $application->applicant;
                 $scholarship = $application->scholarship;
-
-                // Safe access to relationships
                 $applicantUser = $applicant ? $applicant->user : null;
 
-                // Format CGPA
                 $cgpa = $application->cgpa;
                 $cgpaOutOf = $application->cgpa_out_of;
                 $cgpaFormatted = $cgpa && $cgpaOutOf ? "{$cgpa}/{$cgpaOutOf}" : null;
 
-                // Get the latest status
-                $latestStatus = $this->getLatestStatus($application);
+                $cs = optional($applicantUser)->currentStatus;
 
-                // Get meeting status (appointment info)
+                // Meeting status: only when current status is "meeting_scheduled"
                 $meetingStatus = 'not set';
-                if ($application->currentStatus && $application->currentStatus->status_name === 'meeting_scheduled' && $applicantUser) {
+                if ($cs && $cs->status_name === ApplicationStatus::MEETING_SCHEDULED->value && $applicantUser) {
                     $appointment = Appointment::where('user_id', $applicantUser->user_id)
                         ->where('status', 'booked')
                         ->where('starts_at_utc', '>', now())
                         ->first();
 
                     if ($appointment) {
-                        // Convert to admin's timezone (or default to UTC)
                         $adminTimezone = $user->timezone ?? 'UTC';
                         $startsAtLocal = $appointment->starts_at_utc->setTimezone($adminTimezone);
                         $meetingStatus = $startsAtLocal->format('Y-m-d g:i A');
@@ -725,14 +708,13 @@ class ApplicantApplicationController extends Controller
                     'scholarship_name' => $scholarship ? $scholarship->scholarship_name : 'N/A',
                     'cgpa' => $cgpaFormatted,
                     'program_type' => $scholarship ? ($scholarship->scholarship_type ?? 'N/A') : 'N/A',
-                    'current_status' => $latestStatus ? $latestStatus->status_name : 'N/A',
-                    'status_date' => $latestStatus ? $latestStatus->date : null,
-                    'status_comment' => $latestStatus ? $latestStatus->comment : null,
+                    'current_status' => $cs->status_name ?? 'N/A',
+                    'status_date' => $cs->date ?? null,
+                    'status_comment' => $cs->comment ?? null,
                     'meeting_status' => $meetingStatus,
                 ];
             });
 
-        // Count applications by status from the filtered data
         $statusCounts = $applications->groupBy('current_status')->map->count();
 
         return response()->json([
@@ -744,6 +726,7 @@ class ApplicantApplicationController extends Controller
             ]
         ]);
     }
+
     /**
      * Get applicant status including profile completion, first approval, and appointment
      */
@@ -752,7 +735,7 @@ class ApplicantApplicationController extends Controller
         $user = $request->user();
 
         // Check if user is an applicant
-        if (!$user || $user->role !== \App\Enums\UserRole::APPLICANT) {
+        if (!$user || $user->role !== UserRole::APPLICANT) {
             return response()->json(['message' => 'Only applicants can view their status'], 403);
         }
 
@@ -772,9 +755,11 @@ class ApplicantApplicationController extends Controller
         if ($isCompleted) {
             // Get the latest status for any application
             $latestStatus = $applicant->applications()
-                ->with(['statuses' => function ($query) {
-                    $query->orderBy('date', 'desc')->orderBy('created_at', 'desc');
-                }])
+                ->with([
+                    'statuses' => function ($query) {
+                        $query->orderBy('date', 'desc')->orderBy('created_at', 'desc');
+                    }
+                ])
                 ->get()
                 ->flatMap(function ($application) {
                     return $application->statuses;
@@ -806,7 +791,7 @@ class ApplicantApplicationController extends Controller
 
             if ($haveFirstApproval) {
                 // Check for booked appointment first
-                $bookedAppointment = \App\Models\Appointment::where('user_id', $user->user_id)
+                $bookedAppointment = Appointment::where('user_id', $user->user_id)
                     ->where('status', 'booked')
                     ->where('starts_at_utc', '>', now())
                     ->first();
@@ -816,7 +801,7 @@ class ApplicantApplicationController extends Controller
                     $appointment = $bookedAppointment;
                 } else {
                     // User has first approval but no booked appointment, return available appointments
-                    $availableAppointments = \App\Models\Appointment::where('status', 'available')
+                    $availableAppointments = Appointment::where('status', 'available')
                         ->where('starts_at_utc', '>', now())
                         ->orderBy('starts_at_utc')
                         ->get();
@@ -895,48 +880,35 @@ class ApplicantApplicationController extends Controller
     public function secondApproval(Request $request)
     {
         $user = $request->user();
-
-        // Check if user is admin
         if (!$user || $user->role !== UserRole::ADMIN) {
             return response()->json(['message' => 'Only admins can view second approval applications'], 403);
         }
 
         $applications = ApplicantApplication::with([
-            'applicant.user',
+            'applicant.user.currentStatus',
             'scholarship',
-            'currentStatus' => function ($query) {
-                $query->latest('date');
-            },
-            'statuses' => function ($query) {
-                $query->orderBy('date', 'desc');
-            }
         ])
+            ->whereHas('applicant.user.currentStatus', function ($q) {
+                $q->where('status_name', ApplicationStatus::SECOND_APPROVAL->value);
+            })
             ->orderBy('created_at', 'desc')
             ->get()
-            ->filter(function ($application) {
-                // Get the latest status for this application
-                $latestStatus = $this->getLatestStatus($application);
-                return $latestStatus && $latestStatus->status_name === 'second_approval';
-            })
             ->map(function ($application) {
                 $applicant = $application->applicant;
                 $scholarship = $application->scholarship;
+                $userId = optional($applicant->user)->user_id;
 
-                // Safe access to relationships
-                $applicantUser = $applicant ? $applicant->user : null;
+                $cs = optional(optional($applicant)->user)->currentStatus;
 
-                // Get the latest status
-                $latestStatus = $this->getLatestStatus($application);
-
-                // Get comment from previous approval (first_approval)
+                // previous first_approval comment
                 $previousApprovalComment = null;
-                $firstApprovalStatus = $application->statuses
-                    ->where('status_name', 'first_approval')
-                    ->sortByDesc('date')
-                    ->first();
+                if ($userId) {
+                    $firstApproval = ApplicantApplicationStatus::where('user_id', $userId)
+                        ->where('status_name', ApplicationStatus::FIRST_APPROVAL->value)
+                        ->orderBy('date', 'desc')->orderBy('created_at', 'desc')
+                        ->first();
 
-                if ($firstApprovalStatus) {
-                    $previousApprovalComment = $firstApprovalStatus->comment;
+                    $previousApprovalComment = optional($firstApproval)->comment;
                 }
 
                 return [
@@ -945,9 +917,9 @@ class ApplicantApplicationController extends Controller
                     'applicant_name' => $applicant ? $applicant->ar_name : 'N/A',
                     'scholarship_id' => $scholarship ? $scholarship->scholarship_id : null,
                     'scholarship_name' => $scholarship ? $scholarship->scholarship_name : 'N/A',
-                    'current_status' => $latestStatus ? $latestStatus->status_name : 'N/A',
-                    'status_date' => $latestStatus ? $latestStatus->date : null,
-                    'status_comment' => $latestStatus ? $latestStatus->comment : null,
+                    'current_status' => $cs->status_name ?? 'N/A',
+                    'status_date' => $cs->date ?? null,
+                    'status_comment' => $cs->comment ?? null,
                     'comment_from_previous_approval' => $previousApprovalComment,
                 ];
             });
@@ -967,28 +939,27 @@ class ApplicantApplicationController extends Controller
     public function getApplicationById(Request $request, $applicationId)
     {
         $application = ApplicantApplication::with([
+            'applicant.user.currentStatus',
             'applicant.user',
             'applicant.qualifications',
             'scholarship',
             'scholarship.countries',
-            'statuses' => function ($query) {
-                $query->orderBy('date', 'desc')->orderBy('created_at', 'desc');
-            },
-            'currentStatus'
         ])->findOrFail($applicationId);
 
-        // Authorization: admin only
         $user = $request->user();
         if (!$user || $user->role->value !== 'admin') {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        // Prepare appointment info (booked upcoming or available list if first-approved)
-        $appointmentInfo = null;
-        $latestStatus = $this->getLatestStatus($application);
-        $hasFirstApproval = $latestStatus && in_array($latestStatus->status_name, ['first_approval', 'meeting_scheduled']);
+        $cs = optional(optional($application->applicant)->user)->currentStatus;
+        $hasFirstApproval = $cs && in_array($cs->status_name, [
+            ApplicationStatus::FIRST_APPROVAL->value,
+            ApplicationStatus::MEETING_SCHEDULED->value,
+        ]);
 
+        $appointmentInfo = null;
         $applicantUser = optional($application->applicant)->user;
+
         if ($hasFirstApproval && $applicantUser) {
             $booked = Appointment::where('user_id', $applicantUser->user_id)
                 ->where('status', 'booked')
@@ -1050,15 +1021,21 @@ class ApplicantApplicationController extends Controller
             }
         }
 
-        // Compose response
+        // Full status trail (if you want to include it here)
+        $userId = optional(optional($application->applicant)->user)->user_id;
+        $statusTrail = $userId
+            ? ApplicantApplicationStatus::where('user_id', $userId)
+                ->orderBy('date', 'desc')->orderBy('created_at', 'desc')->get()
+            : collect();
+
         return response()->json([
             'application' => [
                 'application_id' => $application->application_id,
                 'applicant' => $application->applicant,
                 'qualifications' => optional($application->applicant)->qualifications ?? [],
                 'scholarship' => $application->scholarship,
-                'status_trail' => $application->statuses,
-                'current_status' => $application->currentStatus,
+                'status_trail' => $statusTrail,
+                'current_status' => $cs,
                 'cgpa' => $application->cgpa,
                 'cgpa_out_of' => $application->cgpa_out_of,
                 'country_name' => $application->country_name,
