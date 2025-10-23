@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ApplicantApplication;
-use App\Models\ApplicantApplicationStatus;
+use App\Models\UserStatus;
 use App\Models\Qualification;
 use App\Models\Applicant;
 use App\Models\Scholarship;
@@ -102,7 +102,7 @@ class ApplicantApplicationController extends Controller
                 ]);
             }
 
-            ApplicantApplicationStatus::create([
+            UserStatus::create([
                 'user_id' => $request->user()->user_id,
                 'status_name' => ApplicationStatus::ENROLLED->value,
                 'date' => now(),
@@ -213,7 +213,7 @@ class ApplicantApplicationController extends Controller
         ]);
 
         // Block reject if already final_approval
-        $latest = ApplicantApplicationStatus::where('user_id', $userId)
+        $latest = UserStatus::where('user_id', $userId)
             ->orderBy('date', 'desc')->orderBy('created_at', 'desc')->first();
 
         if (
@@ -226,7 +226,7 @@ class ApplicantApplicationController extends Controller
         try {
             DB::beginTransaction();
 
-            ApplicantApplicationStatus::create([
+            UserStatus::create([
                 'user_id' => $userId,
                 'status_name' => $data['status'],
                 'date' => now(),
@@ -236,7 +236,7 @@ class ApplicantApplicationController extends Controller
             DB::commit();
 
             // if you still want "current_status", compute from user-level statuses:
-            $currentStatus = ApplicantApplicationStatus::where('user_id', $userId)
+            $currentStatus = UserStatus::where('user_id', $userId)
                 ->orderBy('date', 'desc')->orderBy('created_at', 'desc')->first();
 
             return response()->json([
@@ -273,7 +273,7 @@ class ApplicantApplicationController extends Controller
 
         // If you want full trail on this screen:
         $statusTrail = $userId
-            ? ApplicantApplicationStatus::where('user_id', $userId)
+            ? UserStatus::where('user_id', $userId)
                 ->orderBy('date', 'desc')->orderBy('created_at', 'desc')
                 ->get()
             : collect();
@@ -440,7 +440,7 @@ class ApplicantApplicationController extends Controller
     {
         $userId = $application->applicant->user_id;
 
-        return ApplicantApplicationStatus::where('user_id', $userId)
+        return UserStatus::where('user_id', $userId)
             ->orderBy('date', 'desc')
             ->orderBy('created_at', 'desc')
             ->first();
@@ -903,7 +903,7 @@ class ApplicantApplicationController extends Controller
                 // previous first_approval comment
                 $previousApprovalComment = null;
                 if ($userId) {
-                    $firstApproval = ApplicantApplicationStatus::where('user_id', $userId)
+                    $firstApproval = UserStatus::where('user_id', $userId)
                         ->where('status_name', ApplicationStatus::FIRST_APPROVAL->value)
                         ->orderBy('date', 'desc')->orderBy('created_at', 'desc')
                         ->first();
@@ -1024,7 +1024,7 @@ class ApplicantApplicationController extends Controller
         // Full status trail (if you want to include it here)
         $userId = optional(optional($application->applicant)->user)->user_id;
         $statusTrail = $userId
-            ? ApplicantApplicationStatus::where('user_id', $userId)
+            ? UserStatus::where('user_id', $userId)
                 ->orderBy('date', 'desc')->orderBy('created_at', 'desc')->get()
             : collect();
 
@@ -1049,3 +1049,4 @@ class ApplicantApplicationController extends Controller
         ]);
     }
 }
+

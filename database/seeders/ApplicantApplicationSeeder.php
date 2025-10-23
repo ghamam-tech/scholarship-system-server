@@ -8,7 +8,7 @@ use App\Models\User;
 use App\Models\Applicant;
 use App\Models\Qualification;
 use App\Models\ApplicantApplication;
-use App\Models\ApplicantApplicationStatus;
+use App\Models\UserStatus;
 use App\Enums\UserRole;
 use App\Enums\ApplicationStatus;
 
@@ -319,7 +319,7 @@ class ApplicantApplicationSeeder extends Seeder
                 break;
         }
 
-        ApplicantApplicationStatus::insert($statuses);
+        UserStatus::insert($statuses);
     }
 
     private function getStatusComment(string $status): string
@@ -335,3 +335,4 @@ class ApplicantApplicationSeeder extends Seeder
         return $comments[$status] ?? 'Status updated';
     }
 }
+

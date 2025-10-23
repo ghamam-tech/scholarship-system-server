@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use App\Enums\ApplicationStatus;
+use Illuminate\Database\Eloquent\Model;
 
 class ApplicantApplication extends Model
 {
@@ -41,7 +41,7 @@ class ApplicantApplication extends Model
         return $this->belongsTo(Scholarship::class, 'scholarship_id', 'scholarship_id');
     }
 
-    public function userCurrentStatus(): ?ApplicantApplicationStatus
+    public function userCurrentStatus(): ?UserStatus
     {
         // If everything was eager-loaded: applicant.user.currentStatus
         if (
