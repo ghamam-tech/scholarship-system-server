@@ -17,4 +17,5 @@ enum ApplicationStatus: string
     case ACCEPTED_SCHOLARSHIP = 'accepted_scholarship';
     case REJECTED_SCHOLARSHIP = 'rejected_scholarship';
     case MEETING_REQUESTED = 'meeting_requested';
+    case ADDED_MANUALLY = 'added_manually';
 }
