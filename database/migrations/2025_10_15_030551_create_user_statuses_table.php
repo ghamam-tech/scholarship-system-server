@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
-        Schema::create('applicant_application_statuses', function (Blueprint $table) {
-            $table->id('applicationStatus_id');
+        Schema::create('user_statuses', function (Blueprint $table) {
+            $table->id('user_status_id');
             $table->foreignId('user_id')->constrained('users', 'user_id')->cascadeOnUpdate()->cascadeOnDelete();
 
             // Keep string (flexible); switch to enum if you have a fixed set.
@@ -22,6 +22,6 @@ return new class extends Migration {
 
     public function down(): void
     {
-        Schema::dropIfExists('applicant_application_statuses');
+        Schema::dropIfExists('user_statuses');
     }
 };

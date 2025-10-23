@@ -59,7 +59,7 @@ class User extends Authenticatable
 
     public function statuses()
     {
-        return $this->hasMany(ApplicantApplicationStatus::class, 'user_id', 'user_id')
+        return $this->hasMany(UserStatus::class, 'user_id', 'user_id')
             ->orderBy('date', 'desc')         // prefer business date first
             ->orderBy('created_at', 'desc');  // then tie-break
     }
@@ -67,7 +67,7 @@ class User extends Authenticatable
     public function currentStatus()
     {
         // Ensures a single row using your business column 'date'
-        return $this->hasOne(ApplicantApplicationStatus::class, 'user_id', 'user_id')
+        return $this->hasOne(UserStatus::class, 'user_id', 'user_id')
             ->latestOfMany(['date', 'created_at']);
     }
 }

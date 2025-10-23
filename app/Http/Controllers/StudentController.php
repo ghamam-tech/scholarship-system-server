@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Student;
 use App\Models\User;
 use App\Models\Applicant;
-use App\Models\ApplicantApplicationStatus;
+use App\Models\UserStatus;
 use App\Enums\ApplicationStatus;
 use App\Enums\UserRole;
 use Illuminate\Http\Request;
@@ -34,7 +34,7 @@ class StudentController extends Controller
                 $student = Student::with(['user'])->findOrFail($studentId);
                 $userId = $student->user_id;
 
-                ApplicantApplicationStatus::create([
+                UserStatus::create([
                     'user_id' => $userId,
                     'status_name' => ApplicationStatus::FIRST_WARNING->value,
                     'date' => now(),
@@ -75,7 +75,7 @@ class StudentController extends Controller
                 $student = Student::with(['user'])->findOrFail($studentId);
                 $userId = $student->user_id;
 
-                ApplicantApplicationStatus::create([
+                UserStatus::create([
                     'user_id' => $userId,
                     'status_name' => ApplicationStatus::SECOND_WARNING->value,
                     'date' => now(),
@@ -125,7 +125,7 @@ class StudentController extends Controller
                 }
 
                 // 1) Status trail: TERMINATED
-                ApplicantApplicationStatus::create([
+                UserStatus::create([
                     'user_id' => $user->user_id,
                     'status_name' => ApplicationStatus::TERMINATED->value,
                     'date' => now(),
@@ -189,7 +189,7 @@ class StudentController extends Controller
                 }
 
                 // 1) Append GRADUATED to status trail
-                ApplicantApplicationStatus::create([
+                UserStatus::create([
                     'user_id' => $user->user_id,
                     'status_name' => ApplicationStatus::GRADUATED->value,
                     'date' => now(),
@@ -243,7 +243,7 @@ class StudentController extends Controller
                     return response()->json(['message' => 'Linked user not found for this student'], 422);
                 }
 
-                ApplicantApplicationStatus::create([
+                UserStatus::create([
                     'user_id' => $user->user_id,
                     'status_name' => ApplicationStatus::MEETING_REQUESTED->value,
                     'date' => now(),
@@ -264,3 +264,4 @@ class StudentController extends Controller
         }
     }
 }
+
