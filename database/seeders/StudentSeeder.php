@@ -16,7 +16,7 @@ class StudentSeeder extends Seeder
     public function run(): void
     {
         // Check if approved_applicant_applications table exists
-        if (\Schema::hasTable('approved_applicant_applications')) {
+        if (Schema::hasTable('approved_applicant_applications')) {
             // Get existing applicants with approved applications
             $approvedApplicants = ApprovedApplicantApplication::with(['application.applicant.user'])->get();
 
@@ -26,7 +26,7 @@ class StudentSeeder extends Seeder
 
                 // Check if student already exists for this user
                 $existingStudent = Student::where('user_id', $user->user_id)->first();
-                
+
                 if (!$existingStudent) {
                     // Create student record with only foreign keys
                     Student::create([
@@ -45,5 +45,4 @@ class StudentSeeder extends Seeder
             echo "No approved_applicant_applications table found. No students created.\n";
         }
     }
-
 }
