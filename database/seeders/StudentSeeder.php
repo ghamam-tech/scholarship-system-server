@@ -3,46 +3,80 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
-use App\Models\User;
 use App\Models\Student;
-use App\Models\Applicant;
 use App\Models\ApprovedApplicantApplication;
+use App\Models\Country;
+use App\Models\University;
 use App\Enums\UserRole;
 
 class StudentSeeder extends Seeder
 {
     public function run(): void
     {
-        // Check if approved_applicant_applications table exists
-        if (Schema::hasTable('approved_applicant_applications')) {
-            // Get existing applicants with approved applications
-            $approvedApplicants = ApprovedApplicantApplication::with(['application.applicant.user'])->get();
+        if (!Schema::hasTable('approved_applicant_applications')) {
+            $this->command?->warn('No approved_applicant_applications table found. No students created.');
+            return;
+        }
 
-            foreach ($approvedApplicants as $approvedApp) {
-                $applicant = $approvedApp->application->applicant;
-                $user = $applicant->user;
+        $approvedApplicants = ApprovedApplicantApplication::with([
+            'application.applicant.user',
+            'scholarship.countries',
+            'scholarship.universities',
+        ])->get();
 
-                // Check if student already exists for this user
-                $existingStudent = Student::where('user_id', $user->user_id)->first();
+        if ($approvedApplicants->isEmpty()) {
+            $this->command?->warn('No approved applicant applications available to create students.');
+            return;
+        }
 
-                if (!$existingStudent) {
-                    // Create student record with only foreign keys
-                    Student::create([
-                        'user_id' => $user->user_id,
-                        'applicant_id' => $applicant->applicant_id,
-                        'approved_application_id' => $approvedApp->approved_application_id,
-                    ]);
+        $created = 0;
 
-                    // Update user role to student
-                    $user->update(['role' => UserRole::STUDENT]);
-                }
+        foreach ($approvedApplicants as $approved) {
+            $application = $approved->application;
+            $applicant = $application?->applicant;
+            $user = $applicant?->user;
+            $scholarship = $approved->scholarship;
+
+            if (!$application || !$applicant || !$user || !$scholarship) {
+                continue;
             }
 
-            echo "Created " . $approvedApplicants->count() . " students from approved applicants.\n";
-        } else {
-            echo "No approved_applicant_applications table found. No students created.\n";
+            $country = $scholarship->countries->first();
+            if (!$country && $application->country_name) {
+                $country = Country::where('country_name', $application->country_name)->first();
+            }
+
+            $university = $scholarship->universities->first();
+            if (!$university && $application->university_name) {
+                $university = University::where('university_name', $application->university_name)->first();
+            }
+
+            $student = Student::updateOrCreate(
+                ['user_id' => $user->user_id],
+                [
+                    'applicant_id' => $applicant->applicant_id,
+                    'approved_application_id' => $approved->approved_application_id,
+                    'specialization' => $application->specialization_1,
+                    'offer_letter' => $application->offer_letter_file,
+                    'country_id' => $country?->country_id,
+                    'university_id' => $university?->university_id,
+                ]
+            );
+
+            if ($student->wasRecentlyCreated) {
+                $created++;
+            }
+
+            if (!$applicant->is_archive) {
+                $applicant->update(['is_archive' => 1]);
+            }
+
+            if ($user->role !== UserRole::STUDENT) {
+                $user->update(['role' => UserRole::STUDENT->value]);
+            }
         }
+
+        $this->command?->info("Created {$created} student records from approved applicants.");
     }
 }

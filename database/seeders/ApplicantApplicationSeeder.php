@@ -9,6 +9,7 @@ use App\Models\Applicant;
 use App\Models\Qualification;
 use App\Models\ApplicantApplication;
 use App\Models\UserStatus;
+use App\Models\Scholarship;
 use App\Enums\UserRole;
 use App\Enums\ApplicationStatus;
 
@@ -122,7 +123,133 @@ class ApplicantApplicationSeeder extends Seeder
                     'tahseeli_percentage' => 87.2,
                     'qudorat_percentage' => 90.1,
                 ]
-            ]
+            ],
+            [
+                'email' => 'lina.haddad@example.com',
+                'password' => 'password123',
+                'applicant_data' => [
+                    'ar_name' => 'Lina Haddad',
+                    'en_name' => 'Lina Haddad',
+                    'nationality' => 'Jordanian',
+                    'gender' => 'female',
+                    'place_of_birth' => 'Amman',
+                    'phone' => '+962700112233',
+                    'passport_number' => 'F67890123',
+                    'date_of_birth' => '2002-05-18',
+                    'parent_contact_name' => 'Hani Haddad',
+                    'parent_contact_phone' => '+962700221133',
+                    'residence_country' => 'Jordan',
+                    'language' => 'Arabic',
+                    'is_studied_in_saudi' => false,
+                    'tahseeli_percentage' => null,
+                    'qudorat_percentage' => null,
+                ]
+            ],
+            [
+                'email' => 'noor.abbas@example.com',
+                'password' => 'password123',
+                'applicant_data' => [
+                    'ar_name' => 'Noor Abbas',
+                    'en_name' => 'Noor Abbas',
+                    'nationality' => 'Saudi',
+                    'gender' => 'female',
+                    'place_of_birth' => 'Taif',
+                    'phone' => '+966505551234',
+                    'passport_number' => 'G78901234',
+                    'date_of_birth' => '2001-09-12',
+                    'parent_contact_name' => 'Abbas Saleh',
+                    'parent_contact_phone' => '+966505551235',
+                    'residence_country' => 'Saudi Arabia',
+                    'language' => 'Arabic',
+                    'is_studied_in_saudi' => true,
+                    'tahseeli_percentage' => 91.4,
+                    'qudorat_percentage' => 89.7,
+                ]
+            ],
+            [
+                'email' => 'hassan.rami@example.com',
+                'password' => 'password123',
+                'applicant_data' => [
+                    'ar_name' => 'Hassan Rami',
+                    'en_name' => 'Hassan Rami',
+                    'nationality' => 'Lebanese',
+                    'gender' => 'male',
+                    'place_of_birth' => 'Beirut',
+                    'phone' => '+96170123456',
+                    'passport_number' => 'H89012345',
+                    'date_of_birth' => '1999-04-07',
+                    'parent_contact_name' => 'Rami Hassan',
+                    'parent_contact_phone' => '+96170123457',
+                    'residence_country' => 'Lebanon',
+                    'language' => 'Arabic',
+                    'is_studied_in_saudi' => false,
+                    'tahseeli_percentage' => null,
+                    'qudorat_percentage' => null,
+                ]
+            ],
+            [
+                'email' => 'reem.altamimi@example.com',
+                'password' => 'password123',
+                'applicant_data' => [
+                    'ar_name' => 'Reem Al Tamimi',
+                    'en_name' => 'Reem Al Tamimi',
+                    'nationality' => 'Saudi',
+                    'gender' => 'female',
+                    'place_of_birth' => 'Riyadh',
+                    'phone' => '+966504223344',
+                    'passport_number' => 'I90123456',
+                    'date_of_birth' => '2002-02-02',
+                    'parent_contact_name' => 'Talal Al Tamimi',
+                    'parent_contact_phone' => '+966504223355',
+                    'residence_country' => 'Saudi Arabia',
+                    'language' => 'Arabic',
+                    'is_studied_in_saudi' => true,
+                    'tahseeli_percentage' => 88.6,
+                    'qudorat_percentage' => 86.9,
+                ]
+            ],
+            [
+                'email' => 'yousef.qassim@example.com',
+                'password' => 'password123',
+                'applicant_data' => [
+                    'ar_name' => 'Yousef Qassim',
+                    'en_name' => 'Yousef Qassim',
+                    'nationality' => 'Palestinian',
+                    'gender' => 'male',
+                    'place_of_birth' => 'Nablus',
+                    'phone' => '+970592001122',
+                    'passport_number' => 'J01234567',
+                    'date_of_birth' => '2000-12-30',
+                    'parent_contact_name' => 'Qassim Yousef',
+                    'parent_contact_phone' => '+970592001133',
+                    'residence_country' => 'Palestine',
+                    'language' => 'Arabic',
+                    'is_studied_in_saudi' => false,
+                    'tahseeli_percentage' => null,
+                    'qudorat_percentage' => null,
+                ]
+            ],
+            [
+                'email' => 'mona.salem@example.com',
+                'password' => 'password123',
+                'applicant_data' => [
+                    'ar_name' => 'Mona Salem',
+                    'en_name' => 'Mona Salem',
+                    'nationality' => 'Egyptian',
+                    'gender' => 'female',
+                    'place_of_birth' => 'Alexandria',
+                    'phone' => '+201115556677',
+                    'passport_number' => 'K12345678',
+                    'date_of_birth' => '1998-08-21',
+                    'parent_contact_name' => 'Salem Fathi',
+                    'parent_contact_phone' => '+201115556688',
+                    'residence_country' => 'Egypt',
+                    'language' => 'Arabic',
+                    'is_studied_in_saudi' => false,
+                    'tahseeli_percentage' => null,
+                    'qudorat_percentage' => null,
+                ]
+            ],
         ];
 
         foreach ($applicants as $applicantData) {
@@ -142,12 +269,12 @@ class ApplicantApplicationSeeder extends Seeder
             // 3) Create qualifications (NOW linked to USER)
             $this->createQualifications($user, $applicant);
 
-            // 4) Create applications (unchanged)
+            // 4) Create single application per applicant
             $this->createApplications($applicant);
         }
 
-        $this->command->info('✅ 5 applicants created with qualifications and applications!');
-        $this->command->info('📧 All applicants have password: password123');
+        $this->command->info(count($applicants) . " applicants created with qualifications and single applications.");
+        $this->command->info("All seeded applicants have password: password123");
     }
 
     /**
@@ -234,48 +361,52 @@ class ApplicantApplicationSeeder extends Seeder
         Qualification::insert($qualifications);
     }
 
-    // createApplications() and createApplicationStatuses() stay the same
     private function createApplications(Applicant $applicant): void
     {
-        $scholarships = [1, 2, 3, 4, 5, 6, 7, 8];
+        static $scholarshipIds = null;
 
-        $applicationCount = rand(1, 2);
-
-        for ($i = 0; $i < $applicationCount; $i++) {
-            $universities = [
-                ['Stanford University', 'USA'],
-                ['MIT', 'USA'],
-                ['Harvard University', 'USA'],
-                ['University of Oxford', 'UK'],
-                ['University of Cambridge', 'UK'],
-                ['King Saud University', 'Saudi Arabia'],
-                ['King Abdulaziz University', 'Saudi Arabia'],
-            ];
-
-            $universityData = $universities[array_rand($universities)];
-
-            $application = ApplicantApplication::create([
-                'applicant_id' => $applicant->applicant_id,
-                'scholarship_id' => $scholarships[array_rand($scholarships)],
-                'specialization_1' => 'Computer Science',
-                'specialization_2' => 'Data Science',
-                'specialization_3' => 'Artificial Intelligence',
-                'university_name' => $universityData[0],
-                'country_name' => $universityData[1],
-                'tuition_fee' => $universityData[1] === 'Saudi Arabia' ? rand(10000, 20000) : rand(30000, 60000),
-                'has_active_program' => true,
-                'current_semester_number' => rand(1, 4),
-                'cgpa' => rand(34, 39) / 10,
-                'cgpa_out_of' => 4.0,
-                'terms_and_condition' => true,
-                // You can also switch this to a PATH later if you move apps to S3 paths
-                'offer_letter_file' => "seed/applicants/{$applicant->applicant_id}/applications/offer_letter_{$applicant->applicant_id}_{$i}.pdf",
-                'created_at' => now()->subDays(rand(1, 30)),
-                'updated_at' => now(),
-            ]);
-
-            $this->createApplicationStatuses($application);
+        if ($scholarshipIds === null) {
+            $scholarshipIds = Scholarship::pluck('scholarship_id')->all();
         }
+
+        if (empty($scholarshipIds)) {
+            $this->command?->warn('No scholarships found. Skipping application creation for applicants.');
+            return;
+        }
+
+        $universities = [
+            ['Stanford University', 'USA'],
+            ['MIT', 'USA'],
+            ['Harvard University', 'USA'],
+            ['University of Oxford', 'UK'],
+            ['University of Cambridge', 'UK'],
+            ['King Saud University', 'Saudi Arabia'],
+            ['King Abdulaziz University', 'Saudi Arabia'],
+        ];
+
+        $universityData = $universities[array_rand($universities)];
+        $scholarshipId = $scholarshipIds[array_rand($scholarshipIds)];
+
+        $application = ApplicantApplication::create([
+            'applicant_id' => $applicant->applicant_id,
+            'scholarship_id' => $scholarshipId,
+            'specialization_1' => 'Computer Science',
+            'specialization_2' => 'Data Science',
+            'specialization_3' => 'Artificial Intelligence',
+            'university_name' => $universityData[0],
+            'country_name' => $universityData[1],
+            'tuition_fee' => $universityData[1] === 'Saudi Arabia' ? rand(10000, 20000) : rand(30000, 60000),
+            'has_active_program' => true,
+            'current_semester_number' => rand(1, 4),
+            'cgpa' => rand(34, 39) / 10,
+            'cgpa_out_of' => 4.0,
+            'terms_and_condition' => true,
+            'offer_letter_file' => "seed/applicants/{$applicant->applicant_id}/applications/offer_letter_{$applicant->applicant_id}.pdf",
+            'created_at' => now()->subDays(rand(1, 30)),
+            'updated_at' => now(),
+        ]);
+
+        $this->createApplicationStatuses($application);
     }
 
     private function createApplicationStatuses(ApplicantApplication $application): void
