@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ApprovedApplicantApplication;
 use App\Models\Applicant;
 use App\Models\ApplicantApplication;
-use App\Models\ApplicantApplicationStatus;
+use App\Models\UserStatus;
 use App\Models\Student;
 use App\Models\User;
 use App\Models\Scholarship;
@@ -115,7 +115,7 @@ class ApprovedApplicantApplicationController extends Controller
                 ]);
 
                 // 7) Append FINAL_APPROVAL status trail
-                ApplicantApplicationStatus::create([
+                UserStatus::create([
                     'user_id' => $targetUser->user_id,
                     'status_name' => ApplicationStatus::FINAL_APPROVAL->value,
                     'date' => now(),
@@ -175,7 +175,7 @@ class ApprovedApplicantApplicationController extends Controller
                     $approval->update(['has_accepted_scholarship' => true]);
 
                     // 2) Status trail
-                    ApplicantApplicationStatus::create([
+                    UserStatus::create([
                         'user_id' => $user->user_id,
                         'status_name' => ApplicationStatus::ACCEPTED_SCHOLARSHIP->value,
                         'date' => now(),
@@ -211,7 +211,7 @@ class ApprovedApplicantApplicationController extends Controller
                 $approval->delete();
 
                 // 4) Status trail
-                ApplicantApplicationStatus::create([
+                UserStatus::create([
                     'user_id' => $user->user_id,
                     'status_name' => ApplicationStatus::REJECTED_SCHOLARSHIP->value,
                     'date' => now(),
@@ -230,3 +230,4 @@ class ApprovedApplicantApplicationController extends Controller
         }
     }
 }
+

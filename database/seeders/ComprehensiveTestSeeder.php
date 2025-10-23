@@ -8,7 +8,7 @@ use App\Models\Applicant;
 use App\Models\Scholarship;
 use App\Models\ApplicantApplication;
 use App\Models\Qualification;
-use App\Models\ApplicantApplicationStatus;
+use App\Models\UserStatus;
 use App\Enums\UserRole;
 use App\Enums\ApplicationStatus;
 use Illuminate\Support\Facades\Storage;
@@ -254,7 +254,7 @@ class ComprehensiveTestSeeder extends Seeder
             $this->createQualifications($applicant, $filePaths);
 
             // Create application status
-            ApplicantApplicationStatus::create([
+            UserStatus::create([
                 'user_id' => $applicant->user_id,
                 'status_name' => ApplicationStatus::ENROLLED->value,
                 'status_date' => now(),
@@ -335,3 +335,4 @@ class ComprehensiveTestSeeder extends Seeder
         }
     }
 }
+

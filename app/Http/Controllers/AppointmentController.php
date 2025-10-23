@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Models\ApplicantApplication;
-use App\Models\ApplicantApplicationStatus;
+use App\Models\UserStatus;
 use App\Enums\ApplicationStatus;
 use App\Enums\UserRole;
 use Illuminate\Http\Request;
@@ -110,7 +110,7 @@ class AppointmentController extends Controller
         }
 
         // Require user-level FIRST_APPROVAL
-        $hasFirstApproval = ApplicantApplicationStatus::where('user_id', $user->user_id)
+        $hasFirstApproval = UserStatus::where('user_id', $user->user_id)
             ->where('status_name', ApplicationStatus::FIRST_APPROVAL->value)
             ->exists();
 
@@ -169,7 +169,7 @@ class AppointmentController extends Controller
             ]);
 
             // Update application status to meeting_scheduled
-            ApplicantApplicationStatus::create([
+            UserStatus::create([
                 'user_id' => $user->user_id,
                 'status_name' => ApplicationStatus::MEETING_SCHEDULED->value,
                 'date' => now(),
@@ -364,13 +364,13 @@ class AppointmentController extends Controller
             ]);
 
             // only roll status back if the user had "meeting_scheduled"
-            $hadMeeting = ApplicantApplicationStatus::where('user_id', $user->user_id)
+            $hadMeeting = UserStatus::where('user_id', $user->user_id)
                 ->where('status_name', ApplicationStatus::MEETING_SCHEDULED->value)
                 ->exists();
 
             $statusUpdated = null;
             if ($hadMeeting) {
-                ApplicantApplicationStatus::create([
+                UserStatus::create([
                     'user_id' => $user->user_id,
                     'status_name' => ApplicationStatus::FIRST_APPROVAL->value,
                     'date' => now(),
@@ -987,3 +987,4 @@ class AppointmentController extends Controller
         }
     }
 }
+
