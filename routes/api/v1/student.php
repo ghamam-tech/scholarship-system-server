@@ -5,6 +5,7 @@ use App\Http\Controllers\StudentController;
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::middleware(['role:admin'])->group(function () {
+        Route::get('/admin/students', [StudentController::class, 'index']);
         Route::post('/admin/students/add-manually', [StudentController::class, 'addStudentManually']);
         Route::post('/admin/students/{studentId}/warning/first', [StudentController::class, 'issueFirstWarning']);
         Route::post('/admin/students/{studentId}/warning/second', [StudentController::class, 'issueSecondWarning']);

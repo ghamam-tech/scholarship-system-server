@@ -17,6 +17,31 @@ use Illuminate\Support\Facades\Hash;
 class StudentController extends Controller
 {
     /**
+     * Admin-only: List students with summary information.
+     */
+    public function index(Request $request)
+    {
+        $students = Student::with([
+            'applicant',
+            'country',
+            'user.currentStatus',
+        ])->orderBy('student_id')->get();
+
+        $data = $students->map(function (Student $student) {
+            return [
+                'student_id' => $student->student_id,
+                'name_ar' => optional($student->applicant)->ar_name,
+                'country_of_study' => optional($student->country)->country_name,
+                'cgpa' => 4,
+                'kpi' => 'ok',
+                'latest_status' => $student->user?->currentStatus?->status_name,
+            ];
+        })->values();
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
      * Admin-only: Issue FIRST_WARNING to a student.
      */
     public function issueFirstWarning(Request $request, $studentId)
@@ -380,4 +405,3 @@ class StudentController extends Controller
         }
     }
 }
-
