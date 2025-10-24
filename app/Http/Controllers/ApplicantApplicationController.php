@@ -912,6 +912,7 @@ class ApplicantApplicationController extends Controller
                 }
 
                 return [
+                    'user_id' => $userId,
                     'application_id' => $application->application_id,
                     'applicant_id' => $applicant ? $applicant->applicant_id : null,
                     'applicant_name' => $applicant ? $applicant->ar_name : 'N/A',
