@@ -34,6 +34,7 @@ class ApplicantController extends Controller
             'personal_info.place_of_birth' => ['required', 'string', 'max:255'],
             'personal_info.phone' => ['required', 'string', 'max:20'],
             'personal_info.passport_number' => ['required', 'string', 'max:50', 'unique:applicants,passport_number,' . $applicant->applicant_id . ',applicant_id'],
+            'personal_info.passport_expiry' => ['nullable', 'date'],
             'personal_info.date_of_birth' => ['required', 'string'],
             'personal_info.parent_contact_name' => ['required', 'string', 'max:255'],
             'personal_info.parent_contact_phone' => ['required', 'string', 'max:20'],

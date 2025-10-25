@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\User;
 use App\Models\Applicant;
 use App\Models\UserStatus;
+use App\Models\Qualification;
 use App\Enums\ApplicationStatus;
 use App\Enums\UserRole;
 use Illuminate\Http\Request;
@@ -39,6 +40,132 @@ class StudentController extends Controller
         })->values();
 
         return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Admin-only: Show detailed student information.
+     */
+    public function show(Request $request, $studentId)
+    {
+        $student = Student::with([
+            'user.statuses' => function ($query) {
+                $query->orderBy('date', 'desc')->orderBy('created_at', 'desc');
+            },
+            'user.applicant.qualifications',
+            'applicant',
+            'country',
+            'university',
+            'approvedApplication.scholarship',
+        ])->findOrFail($studentId);
+
+        $user = $student->user;
+        $applicant = $student->applicant ?? $user?->applicant;
+        $latestStatus = $user?->currentStatus;
+        $statuses = $user?->statuses ?? collect();
+
+        $personal = [
+            'nameEnglish' => $applicant?->en_name,
+            'nameArabic' => $applicant?->ar_name,
+            'nationality' => $applicant?->nationality,
+            'gender' => $applicant?->gender,
+            'dateOfBirth' => $applicant?->date_of_birth,
+            'placeOfBirth' => $applicant?->place_of_birth,
+            'email' => $user?->email,
+            'phone' => $applicant?->phone,
+            'residenceCountry' => $applicant?->residence_country,
+            'passportNumber' => $applicant?->passport_number,
+            'passportExpiry' => $applicant?->passport_expiry,
+            'parentContactName' => $applicant?->parent_contact_name,
+            'parentContactNumber' => $applicant?->parent_contact_phone,
+        ];
+
+        $qualifications = $user
+            ? $user->qualifications()
+                ->orderBy('qualification_type')
+                ->get()
+                ->map(function (Qualification $qualification) use ($applicant) {
+                    $qualificationData = [
+                        'qualification_type' => $qualification->qualification_type,
+                        'institute_name' => $qualification->institute_name,
+                        'year_of_graduation' => $qualification->year_of_graduation,
+                        'cgpa' => $qualification->cgpa,
+                        'cgpa_out_of' => $qualification->cgpa_out_of,
+                        'language_of_study' => $qualification->language_of_study,
+                        'specialization' => $qualification->specialization,
+                        'research_title' => $qualification->research_title,
+                        'document_file' => $qualification->document_file,
+                    ];
+
+                    if (
+                        $applicant?->is_studied_in_saudi
+                        && $qualification->qualification_type === 'high_school'
+                    ) {
+                        $qualificationData['studiedInSaudi'] = true;
+                        $qualificationData['qudoratPercentage'] = $applicant->qudorat_percentage;
+                        $qualificationData['tahseeliPercentage'] = $applicant->tahseeli_percentage;
+                    }
+
+                    return $qualificationData;
+                })
+                ->values()
+            : collect();
+
+        $program = [
+            'started' => true,
+            'country' => $student->country?->country_name,
+            'university' => $student->university?->university_name,
+            'language' => $student->language_of_study,
+            'specialization' => $student->specialization,
+            'yearlyTuition' => $student->yearly_tuition_fees,
+            'studyPeriod' => $student->study_period,
+            'numberOfSemesters' => $student->total_semesters_number,
+            'currentSemester' => $student->current_semester_number,
+            'currentCGPA' => 3.8,
+        ];
+
+        $scholarship = null;
+        $approvedApplication = $student->approvedApplication;
+
+        if ($approvedApplication && $approvedApplication->scholarship) {
+            $scholarshipModel = $approvedApplication->scholarship;
+            $scholarship = [
+                'id' => $scholarshipModel->scholarship_id,
+                'name' => $scholarshipModel->scholarship_name,
+                'type' => $scholarshipModel->scholarship_type,
+                'benefits' => $approvedApplication->benefits,
+            ];
+        }
+
+        $statusTrail = $statuses->map(function (UserStatus $status) {
+            return [
+                'status_name' => $status->status_name,
+                'date' => $status->date,
+                'comment' => $status->comment,
+                'status' => 'completed',
+            ];
+        })->values();
+
+        return response()->json([
+            'data' => [
+                'id' => $student->student_id,
+                'status' => $latestStatus?->status_name,
+                'enrollmentDate' => now()->toDateString(),
+                'personal' => $personal,
+                'academic' => [
+                    'qualifications' => $qualifications,
+                ],
+                'program' => $program,
+                'semesters' => [],
+                'scholarship' => $scholarship,
+                'kpi' => [
+                    'academicScore' => 85,
+                    'attendanceScore' => 92,
+                    'engagementScore' => 78,
+                    'overallScore' => 85,
+                ],
+                'statusTrail' => $statusTrail,
+            ]
+        ], 200);
     }
 
     /**
