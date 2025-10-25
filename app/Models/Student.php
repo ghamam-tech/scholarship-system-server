@@ -16,6 +16,11 @@ class Student extends Model
         'offer_letter',
         'country_id',
         'university_id',
+        'language_of_study',
+        'yearly_tuition_fees',
+        'study_period',
+        'total_semesters_number',
+        'current_semester_number',
     ];
 
     // Relationships

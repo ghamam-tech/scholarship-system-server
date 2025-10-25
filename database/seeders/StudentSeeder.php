@@ -61,6 +61,11 @@ class StudentSeeder extends Seeder
                     'offer_letter' => $application->offer_letter_file,
                     'country_id' => $country?->country_id,
                     'university_id' => $university?->university_id,
+                    'language_of_study' => null,
+                    'yearly_tuition_fees' => $application->tuition_fee,
+                    'study_period' => null,
+                    'total_semesters_number' => null,
+                    'current_semester_number' => $application->current_semester_number,
                 ]
             );
 

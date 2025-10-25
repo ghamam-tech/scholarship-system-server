@@ -20,6 +20,7 @@ class Applicant extends Model
         'place_of_birth',
         'phone',
         'passport_number',
+        'passport_expiry',
         'date_of_birth',
         'parent_contact_name',
         'parent_contact_phone',
