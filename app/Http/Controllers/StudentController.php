@@ -17,6 +17,47 @@ use Illuminate\Support\Facades\Hash;
 
 class StudentController extends Controller
 {
+    public function statusSummary(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $latestStatus = $user->currentStatus;
+        $applicant = $user->applicant;
+
+        $response = [
+            'latest_status' => $latestStatus?->status_name,
+            'is_completed' => $applicant?->is_completed ?? false,
+        ];
+
+        $approvedApplication = ApprovedApplicantApplication::with('scholarship')
+            ->where('user_id', $user->user_id)
+            ->where('has_accepted_scholarship', false)
+            ->latest('created_at')
+            ->first();
+
+        if ($approvedApplication) {
+            $response['apprroved_application_id'] = $approvedApplication->approved_application_id;
+
+            if ($approvedApplication->scholarship) {
+                $scholarship = $approvedApplication->scholarship;
+
+                $response['scholarship'] = [
+                    'id' => $scholarship->scholarship_id,
+                    'name' => $scholarship->scholarship_name,
+                    'type' => $scholarship->scholarship_type,
+                    'description' => $scholarship->description,
+                    'benefits' => $approvedApplication->benefits,
+                ];
+            }
+        }
+
+        return response()->json($response);
+    }
+
     /**
      * Admin-only: List students with summary information.
      */
@@ -482,7 +523,7 @@ class StudentController extends Controller
                 // Note: application_id is omitted on purpose for manual add (assumed nullable)
                 $approval = ApprovedApplicantApplication::create([
                     'benefits' => $benefitsValue,
-                    'has_accepted_scholarship' => true, // manual add ⇒ considered accepted
+                    'has_accepted_scholarship' => false, // manual add ⇒ considered accepted
                     'scholarship_id' => $scholarship->scholarship_id,
                     'application_id' => null, // <-- if NOT nullable in your schema, ping me to adjust
                     'user_id' => $user->user_id,
