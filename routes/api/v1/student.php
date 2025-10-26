@@ -6,6 +6,8 @@ use App\Http\Controllers\StudentController;
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::middleware(['role:student'])->group(function () {
         Route::get('/student/status-summary', [StudentController::class, 'statusSummary']);
+        Route::get('/student/profile', [StudentController::class, 'getProfile']);
+        Route::put('/student/profile', [StudentController::class, 'updateProfile']);
     });
 
     Route::middleware(['role:admin'])->group(function () {

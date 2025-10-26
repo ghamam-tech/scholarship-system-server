@@ -14,6 +14,10 @@ use App\Enums\UserRole;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rule;
 
 class StudentController extends Controller
 {
@@ -56,6 +60,271 @@ class StudentController extends Controller
         }
 
         return response()->json($response);
+    }
+
+    /**
+     * Student-only: Update profile data, keeping existing files unless replacements are provided.
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $applicant = $user->applicant;
+
+        if (!$applicant) {
+            return response()->json(['message' => 'Applicant profile not found'], 404);
+        }
+
+        $rules = [
+            'personal_info' => ['sometimes', 'array'],
+            'personal_info.ar_name' => ['required_with:personal_info', 'string', 'max:255'],
+            'personal_info.en_name' => ['required_with:personal_info', 'string', 'max:255'],
+            'personal_info.nationality' => ['required_with:personal_info', 'string', 'max:100'],
+            'personal_info.gender' => ['required_with:personal_info', 'string', 'in:male,female'],
+            'personal_info.place_of_birth' => ['required_with:personal_info', 'string', 'max:255'],
+            'personal_info.phone' => ['required_with:personal_info', 'string', 'max:20'],
+            'personal_info.passport_number' => ['required_with:personal_info', 'string', 'max:50', 'unique:applicants,passport_number,' . $applicant->applicant_id . ',applicant_id'],
+            'personal_info.passport_expiry' => ['nullable', 'date'],
+            'personal_info.date_of_birth' => ['required_with:personal_info', 'string'],
+            'personal_info.parent_contact_name' => ['required_with:personal_info', 'string', 'max:255'],
+            'personal_info.parent_contact_phone' => ['required_with:personal_info', 'string', 'max:20'],
+            'personal_info.residence_country' => ['required_with:personal_info', 'string', 'max:100'],
+            'personal_info.language' => ['required_with:personal_info', 'string', 'max:50'],
+            'personal_info.is_studied_in_saudi' => ['required_with:personal_info', 'boolean'],
+            'personal_info.tahseeli_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'personal_info.qudorat_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
+
+            'academic_info' => ['sometimes', 'array'],
+            'academic_info.qualifications' => ['sometimes', 'array'],
+            'academic_info.qualifications.*.qualification_id' => ['sometimes', 'integer', 'exists:qualifications,qualification_id'],
+            'academic_info.qualifications.*.qualification_type' => ['sometimes', Rule::in(['high_school', 'diploma', 'bachelor', 'master', 'phd', 'other'])],
+            'academic_info.qualifications.*.institute_name' => ['sometimes', 'string', 'max:255'],
+            'academic_info.qualifications.*.year_of_graduation' => ['sometimes', 'integer', 'min:1900', 'max:' . (date('Y') + 5)],
+            'academic_info.qualifications.*.cgpa' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'academic_info.qualifications.*.cgpa_out_of' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'academic_info.qualifications.*.language_of_study' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'academic_info.qualifications.*.specialization' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'academic_info.qualifications.*.research_title' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'academic_info.qualifications.*.document_file' => ['sometimes', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+
+            'passport_copy' => ['sometimes', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+            'personal_image' => ['sometimes', 'file', 'mimes:jpeg,png,jpg', 'max:5120'],
+            'tahsili_file' => ['sometimes', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+            'qudorat_file' => ['sometimes', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+            'volunteering_certificate' => ['sometimes', 'file', 'mimes:jpeg,png,jpg,pdf', 'max:10240'],
+        ];
+
+        $data = $request->validate($rules);
+
+        try {
+            DB::beginTransaction();
+
+            if (isset($data['personal_info'])) {
+                $applicant->update(array_merge($data['personal_info'], ['is_completed' => true]));
+            }
+
+            $this->handleDocumentUploads($request, $applicant);
+
+            if (isset($data['academic_info']['qualifications'])) {
+                $this->syncQualifications($request, $user, $data['academic_info']['qualifications']);
+            }
+
+            DB::commit();
+
+            $applicant->refresh();
+            $applicant->setRelation(
+                'qualifications',
+                $user->qualifications()->orderBy('qualification_type')->get()
+            );
+
+            return response()->json([
+                'message' => 'Student profile updated successfully',
+                'applicant' => $applicant,
+            ]);
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Failed to update student profile',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Student-only: Retrieve applicant profile with qualifications.
+     */
+    public function getProfile(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $applicant = $user->applicant;
+
+        if (!$applicant) {
+            return response()->json(['message' => 'Applicant profile not found'], 404);
+        }
+
+        $applicant->load('user');
+        $applicant->setRelation(
+            'qualifications',
+            $user->qualifications()->orderBy('qualification_type')->get()
+        );
+
+        return response()->json(['applicant' => $applicant]);
+    }
+
+    private function handleDocumentUploads(Request $request, Applicant $applicant): void
+    {
+        $documentFields = [
+            'passport_copy' => 'passport_copy_img',
+            'personal_image' => 'personal_image',
+            'tahsili_file' => 'tahsili_file',
+            'qudorat_file' => 'qudorat_file',
+            'volunteering_certificate' => 'volunteering_certificate_file',
+        ];
+
+        foreach ($documentFields as $requestField => $modelField) {
+            if ($request->hasFile($requestField)) {
+                if ($applicant->$modelField) {
+                    Storage::disk('s3')->delete($applicant->$modelField);
+                }
+
+                $file = $request->file($requestField);
+                $filename = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
+                $path = $file->storeAs(
+                    "applicants/{$applicant->applicant_id}/documents",
+                    $filename,
+                    's3'
+                );
+
+                $applicant->update([$modelField => $path]);
+            }
+        }
+    }
+
+    private function syncQualifications(Request $request, User $user, array $qualifications): void
+    {
+        foreach ($qualifications as $index => $qualificationData) {
+            $fileKey = "academic_info.qualifications.$index.document_file";
+            $qualificationId = $qualificationData['qualification_id'] ?? null;
+            $qualification = null;
+
+            if ($qualificationId) {
+                $qualification = $user->qualifications()
+                    ->where('qualification_id', $qualificationId)
+                    ->first();
+
+                if (!$qualification) {
+                    throw ValidationException::withMessages([
+                        "academic_info.qualifications.$index.qualification_id" => ['Qualification not found for this student.'],
+                    ]);
+                }
+            }
+
+            if ($qualification) {
+                $payload = $this->extractQualificationPayload($qualificationData);
+
+                if ($request->hasFile($fileKey)) {
+                    if ($qualification->document_file) {
+                        Storage::disk('s3')->delete($qualification->document_file);
+                    }
+
+                    $file = $request->file($fileKey);
+                    $filename = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
+                    $payload['document_file'] = $file->storeAs(
+                        "users/{$user->user_id}/qualifications",
+                        $filename,
+                        's3'
+                    );
+                }
+
+                if (!empty($payload)) {
+                    $qualification->update($payload);
+                }
+
+                continue;
+            }
+
+            $this->createQualification($request, $user, $qualificationData, $index);
+        }
+    }
+
+    private function extractQualificationPayload(array $data): array
+    {
+        $fields = [
+            'qualification_type',
+            'institute_name',
+            'year_of_graduation',
+            'cgpa',
+            'cgpa_out_of',
+            'language_of_study',
+            'specialization',
+            'research_title',
+        ];
+
+        $payload = [];
+
+        foreach ($fields as $field) {
+            if (array_key_exists($field, $data)) {
+                $payload[$field] = $data[$field];
+            }
+        }
+
+        return $payload;
+    }
+
+    private function createQualification(Request $request, User $user, array $data, int $index): void
+    {
+        $validated = Validator::make($data, [
+            'qualification_type' => ['required', Rule::in(['high_school', 'diploma', 'bachelor', 'master', 'phd', 'other'])],
+            'institute_name' => ['required', 'string', 'max:255'],
+            'year_of_graduation' => ['required', 'integer', 'min:1900', 'max:' . (date('Y') + 5)],
+            'cgpa' => ['nullable', 'numeric', 'min:0'],
+            'cgpa_out_of' => ['nullable', 'numeric', 'min:0'],
+            'language_of_study' => ['nullable', 'string', 'max:100'],
+            'specialization' => ['nullable', 'string', 'max:255'],
+            'research_title' => ['nullable', 'string', 'max:500'],
+        ])->validate();
+
+        $fileKey = "academic_info.qualifications.$index.document_file";
+
+        if (!$request->hasFile($fileKey)) {
+            throw ValidationException::withMessages([
+                $fileKey => ['Document file is required when creating a new qualification.'],
+            ]);
+        }
+
+        $file = $request->file($fileKey);
+        $filename = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
+        $documentPath = $file->storeAs(
+            "users/{$user->user_id}/qualifications",
+            $filename,
+            's3'
+        );
+
+        Qualification::create([
+            'user_id' => $user->user_id,
+            'qualification_type' => $validated['qualification_type'],
+            'institute_name' => $validated['institute_name'],
+            'year_of_graduation' => $validated['year_of_graduation'],
+            'cgpa' => $validated['cgpa'] ?? null,
+            'cgpa_out_of' => $validated['cgpa_out_of'] ?? null,
+            'language_of_study' => $validated['language_of_study'] ?? null,
+            'specialization' => $validated['specialization'] ?? null,
+            'research_title' => $validated['research_title'] ?? null,
+            'document_file' => $documentPath,
+        ]);
     }
 
     /**
