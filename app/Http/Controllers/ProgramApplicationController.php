@@ -788,6 +788,16 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Invalid QR code'], 404);
         }
 
+        // Check if program is active
+        if ($program->program_status !== 'active') {
+            return response()->json([
+                'message' => 'QR attendance is not available',
+                'reason' => 'Program is not active',
+                'program_status' => $program->program_status,
+                'available_when' => 'Program status is "active"'
+            ], 403);
+        }
+
         // Check if QR attendance is enabled
         if (!$program->enable_qr_attendance) {
             return response()->json(['message' => 'QR attendance is not enabled for this program'], 400);
@@ -842,6 +852,7 @@ class ProgramApplicationController extends Controller
     /**
      * Student: Mark attendance via QR token (requires student authentication)
      * Only students invited to the program can mark attendance
+     * Only works when program status is "active"
      */
     public function markAttendanceViaQR(Request $request, $token)
     {
@@ -864,6 +875,16 @@ class ProgramApplicationController extends Controller
 
         if (!$program) {
             return response()->json(['message' => 'Invalid QR code'], 404);
+        }
+
+        // Check if program is active
+        if ($program->program_status !== 'active') {
+            return response()->json([
+                'message' => 'QR attendance is not available',
+                'reason' => 'Program is not active',
+                'program_status' => $program->program_status,
+                'available_when' => 'Program status is "active"'
+            ], 403);
         }
 
         // Check if QR attendance is enabled
@@ -909,13 +930,29 @@ class ProgramApplicationController extends Controller
         // Check if attendance is already marked
         if ($application->application_status === 'attend') {
             $responseData['message'] = 'Attendance already marked';
+
+            // Check if certificate token exists or should be generated
+            if ($program->program_status === 'completed' && $program->generate_certificates) {
+                if (!$application->certificate_token) {
+                    // Generate certificate token for already marked attendance
+                    $certificateToken = \Illuminate\Support\Str::random(32);
+                    $application->update(['certificate_token' => $certificateToken]);
+                    $responseData['certificate_token'] = $certificateToken;
+                    $responseData['message'] = 'Attendance already marked. Certificate is now available.';
+                } else {
+                    // Certificate token already exists
+                    $responseData['certificate_token'] = $application->certificate_token;
+                    $responseData['message'] = 'Attendance already marked.';
+                }
+            }
+
             return response()->json($responseData);
         }
 
         try {
             // Use database transaction to prevent race conditions
             DB::beginTransaction();
-            
+
             // Lock the application row to prevent concurrent updates
             $lockedApplication = ProgramApplication::where('student_id', $student->student_id)
                 ->where('program_id', $program->program_id)
@@ -931,17 +968,33 @@ class ProgramApplicationController extends Controller
                 return response()->json($responseData);
             }
 
-            // Update status to attend
-            $lockedApplication->update(['application_status' => 'attend']);
-            
+            // Generate certificate token if program is completed and generate_certificates is enabled
+            $certificateToken = null;
+            if ($program->program_status === 'completed' && $program->generate_certificates) {
+                $certificateToken = \Illuminate\Support\Str::random(32);
+            }
+
+            // Update status to attend and certificate token
+            $updateData = ['application_status' => 'attend'];
+            if ($certificateToken) {
+                $updateData['certificate_token'] = $certificateToken;
+            }
+
+            $lockedApplication->update($updateData);
+
             DB::commit();
 
             $responseData['message'] = 'Attendance marked successfully! Welcome to the program.';
             $responseData['application']['status'] = 'attend';
             $responseData['application']['marked_at'] = $lockedApplication->fresh()->updated_at;
 
-            return response()->json($responseData);
+            // Add certificate token to response if generated
+            if ($certificateToken) {
+                $responseData['certificate_token'] = $certificateToken;
+                $responseData['message'] = 'Attendance marked successfully! Certificate is now available.';
+            }
 
+            return response()->json($responseData);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -950,5 +1003,192 @@ class ProgramApplicationController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Admin: Get all applications with accepted or attend status for a program
+     */
+    public function getProgramAttendance(Request $request, $programId)
+    {
+        $user = $request->user();
+
+        // Check if user is admin
+        if (!$user || $user->role->value !== UserRole::ADMIN->value) {
+            return response()->json(['message' => 'Only admins can view program attendance'], 403);
+        }
+
+        $program = Program::find($programId);
+        if (!$program) {
+            return response()->json(['message' => 'Program not found'], 404);
+        }
+
+        // Get applications with accepted or attend status
+        $applications = ProgramApplication::with(['student.user', 'student.applicant', 'student.approvedApplication.scholarship'])
+            ->where('program_id', $programId)
+            ->whereIn('application_status', ['accepted', 'attend'])
+            ->whereHas('student')
+            ->get();
+
+        return response()->json([
+            'program' => [
+                'program_id' => $program->program_id,
+                'title' => $program->title,
+                'program_status' => $program->program_status,
+                'date' => $program->date,
+                'location' => $program->location,
+            ],
+            'applications' => $applications->map(function ($application) {
+                return [
+                    'application_id' => $application->application_program_id,
+                    'student_id' => $application->student_id,
+                    'name' => $application->student?->applicant?->ar_name ?? $application->student?->applicant?->en_name ?? 'N/A',
+                    'email' => $application->student?->user?->email ?? 'N/A',
+                    'university' => $application->student?->university ?? 'N/A',
+                    'status' => $application->application_status,
+                    'scholarship_name' => $application->student?->approvedApplication?->scholarship?->scholarship_name ?? 'N/A',
+                    'created_at' => $application->created_at,
+                    'updated_at' => $application->updated_at,
+                ];
+            }),
+            'statistics' => [
+                'total_accepted' => $applications->where('application_status', 'accepted')->count(),
+                'total_attended' => $applications->where('application_status', 'attend')->count(),
+                'total_eligible' => $applications->count(),
+            ]
+        ]);
+    }
+
+    /**
+     * Admin: Update application status (accepted/attend) for multiple applications
+     */
+    public function updateApplicationStatus(Request $request, $programId)
+    {
+        $user = $request->user();
+
+        // Check if user is admin
+        if (!$user || $user->role->value !== UserRole::ADMIN->value) {
+            return response()->json(['message' => 'Only admins can update application status'], 403);
+        }
+
+        $data = $request->validate([
+            'applications' => ['required', 'array', 'min:1'],
+            'applications.*.application_id' => ['required', 'integer', 'exists:program_applications,application_program_id'],
+            'applications.*.status' => ['required', 'string', 'in:accepted,attend'],
+        ]);
+
+        $program = Program::find($programId);
+        if (!$program) {
+            return response()->json(['message' => 'Program not found'], 404);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $updatedApplications = [];
+            $errors = [];
+
+            foreach ($data['applications'] as $appData) {
+                $application = ProgramApplication::with(['student.user', 'student.applicant'])
+                    ->where('application_program_id', $appData['application_id'])
+                    ->where('program_id', $programId)
+                    ->first();
+
+                if (!$application) {
+                    $errors[] = [
+                        'application_id' => $appData['application_id'],
+                        'error' => 'Application not found for this program'
+                    ];
+                    continue;
+                }
+
+                // Validate status transition
+                if ($application->application_status === 'invite' && $appData['status'] === 'attend') {
+                    $errors[] = [
+                        'application_id' => $appData['application_id'],
+                        'error' => 'Cannot mark attendance without accepting invitation first'
+                    ];
+                    continue;
+                }
+
+                $application->update(['application_status' => $appData['status']]);
+
+                $updatedApplications[] = [
+                    'application_id' => $application->application_program_id,
+                    'student_id' => $application->student_id,
+                    'name' => $application->student?->applicant?->ar_name ?? $application->student?->applicant?->en_name ?? 'N/A',
+                    'email' => $application->student?->user?->email ?? 'N/A',
+                    'old_status' => $application->getOriginal('application_status'),
+                    'new_status' => $appData['status'],
+                    'updated_at' => $application->updated_at,
+                ];
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Application statuses updated successfully',
+                'updated_count' => count($updatedApplications),
+                'error_count' => count($errors),
+                'updated_applications' => $updatedApplications,
+                'errors' => $errors,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Failed to update application statuses',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Public: Get certificate details by token (no authentication required)
+     * Only accessible when program status is "completed"
+     */
+    public function getCertificate(Request $request, $token)
+    {
+        // Find application by certificate token
+        $application = ProgramApplication::with(['student.user', 'student.applicant', 'program'])
+            ->where('certificate_token', $token)
+            ->first();
+
+        if (!$application) {
+            return response()->json(['message' => 'Invalid certificate token'], 404);
+        }
+
+        // CRITICAL: Only allow access when program status is "completed"
+        if ($application->program->program_status !== 'completed') {
+            return response()->json([
+                'message' => 'Certificate not yet available',
+                'reason' => 'Program is not completed yet',
+                'program_status' => $application->program->program_status,
+                'available_when' => 'Program status becomes "completed"'
+            ], 403);
+        }
+
+        // Check if certificates are enabled
+        if (!$application->program->generate_certificates) {
+            return response()->json(['message' => 'Certificate generation is disabled for this program'], 400);
+        }
+
+        // Check if application status is attend
+        if ($application->application_status !== 'attend') {
+            return response()->json(['message' => 'Certificate not available - attendance not marked'], 400);
+        }
+
+        return response()->json([
+            'certificate' => [
+                'application_id' => $application->application_program_id,
+                'student_name' => $application->student->applicant?->ar_name ?? $application->student->applicant?->en_name ?? 'N/A',
+                'program_title' => $application->program->title,
+                'program_date' => $application->program->date,
+                'attendance_date' => $application->updated_at,
+                'program_location' => $application->program->location,
+                'program_country' => $application->program->country,
+                'certificate_token' => $application->certificate_token,
+                'issued_at' => now(),
+                'program_status' => $application->program->program_status,
+            ]
+        ]);
     }
 }

@@ -361,6 +361,7 @@ class ProgramController extends Controller
     /**
      * Public: QR Code scanning endpoint (no authentication required)
      * Returns program information for QR scan
+     * Only works when program status is "active"
      */
     public function qrScan(Request $request, $token)
     {
@@ -369,6 +370,16 @@ class ProgramController extends Controller
 
         if (!$program) {
             return response()->json(['message' => 'Invalid QR code'], 404);
+        }
+
+        // Check if program is active
+        if ($program->program_status !== 'active') {
+            return response()->json([
+                'message' => 'QR code scanning is not available',
+                'reason' => 'Program is not active',
+                'program_status' => $program->program_status,
+                'available_when' => 'Program status is "active"'
+            ], 403);
         }
 
         // Check if QR attendance is enabled
@@ -387,6 +398,7 @@ class ProgramController extends Controller
                 'location' => $program->location,
                 'country' => $program->country,
                 'category' => $program->category,
+                'program_status' => $program->program_status,
                 'qr_token' => $token,
                 'enable_qr_attendance' => $program->enable_qr_attendance,
                 'generate_certificates' => $program->generate_certificates,
@@ -398,6 +410,8 @@ class ProgramController extends Controller
             ]
         ]);
     }
+
+    
 
     /**
      * Format program response to ensure proper boolean values

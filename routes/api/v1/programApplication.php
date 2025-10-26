@@ -29,6 +29,12 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
 
     // Delete application
     Route::delete('admin/programs/applications/{applicationId}', [ProgramApplicationController::class, 'deleteApplication']);
+
+    // Get program attendance (accepted/attend applications)
+    Route::get('admin/programs/{programId}/attendance', [ProgramApplicationController::class, 'getProgramAttendance']);
+
+    // Update application status (accepted/attend) for multiple applications
+    Route::patch('admin/programs/{programId}/applications/status', [ProgramApplicationController::class, 'updateApplicationStatus']);
 });
 
 // Student-only routes - require authentication and student role
@@ -58,3 +64,6 @@ Route::middleware(['auth:sanctum', 'role:student'])->group(function () {
     Route::post('programs/qr/{token}/attendance', [ProgramApplicationController::class, 'qrAttendanceWithToken']);
     Route::post('programs/qr/{token}/mark-attendance', [ProgramApplicationController::class, 'markAttendanceViaQR']);
 });
+
+// Public certificate route (no authentication required)
+Route::get('certificates/{token}', [ProgramApplicationController::class, 'getCertificate']);
