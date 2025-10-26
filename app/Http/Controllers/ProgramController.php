@@ -28,7 +28,16 @@ class ProgramController extends Controller
 
         return response()->json([
             'programs' => $programs->map(function ($program) {
-                return $this->formatProgramResponse($program);
+                return [
+                    'program_id' => $program->program_id,
+                    'title' => $program->title,
+                    'date' => $program->date,
+                    'category' => $program->category,
+                    'country' => $program->country,
+                    'status' => $program->program_status,
+                    'invitations_count' => $program->program_applications_count,
+                    'location' => $program->location,
+                ];
             })
         ]);
     }
@@ -113,14 +122,41 @@ class ProgramController extends Controller
             return response()->json(['message' => 'Only admins can view program details'], 403);
         }
 
-        $program = Program::with(['programApplications.student.user'])->find($id);
+        $program = Program::with(['programApplications'])->find($id);
 
         if (!$program) {
             return response()->json(['message' => 'Program not found'], 404);
         }
 
         return response()->json([
-            'program' => $this->formatProgramResponse($program)
+            'program' => [
+                'program_id' => $program->program_id,
+                'discription' => $program->discription,
+                'title' => $program->title,
+                'date' => $program->date,
+                'category' => $program->category,
+                'country' => $program->country,
+                'status' => $program->program_status,
+                'location' => $program->location,
+                'invitations_count' => $program->program_applications_count,
+                'enable_qr_attendance' => $program->enable_qr_attendance,
+                'generate_certificates' => $program->generate_certificates,
+                'program_coordinatior_name' => $program->program_coordinatior_name,
+                'program_coordinatior_phone' => $program->program_coordinatior_phone,
+                'program_coordinatior_email' => $program->program_coordinatior_email,
+                'start_date' => $program->start_date,
+                'end_date' => $program->end_date,
+                'image_file' => $program->image_file,
+                'image_url' => $program->image_file ? asset('storage/' . $program->image_file) : null,
+                'qr_url' => $program->qr_url,
+                'applications' => $program->programApplications->map(function ($application) {
+                    return [
+                        'application_id' => $application->application_program_id,
+                        'student_id' => $application->student_id,
+                        'status' => $application->application_status
+                    ];
+                })
+            ]
         ]);
     }
 
@@ -158,6 +194,7 @@ class ProgramController extends Controller
             'program_status' => ['sometimes', 'in:active,inactive,completed,cancelled'],
             'enable_qr_attendance' => ['sometimes', 'boolean'],
             'generate_certificates' => ['sometimes', 'boolean'],
+
         ]);
 
         try {
@@ -318,16 +355,17 @@ class ProgramController extends Controller
     private function generateQRUrl()
     {
         $token = Str::random(32);
-        return url("/api/v1/programs/qr/{$token}");
+        return $token;
     }
 
     /**
      * Public: QR Code scanning endpoint (no authentication required)
+     * Returns program information for QR scan
      */
     public function qrScan(Request $request, $token)
     {
         // Find program by QR token
-        $program = Program::where('qr_url', 'like', "%{$token}")->first();
+        $program = Program::where('qr_url', $token)->first();
 
         if (!$program) {
             return response()->json(['message' => 'Invalid QR code'], 404);
@@ -344,9 +382,19 @@ class ProgramController extends Controller
             'program' => [
                 'program_id' => $program->program_id,
                 'title' => $program->title,
+                'description' => $program->discription,
                 'date' => $program->date,
                 'location' => $program->location,
-                'qr_token' => $token
+                'country' => $program->country,
+                'category' => $program->category,
+                'qr_token' => $token,
+                'enable_qr_attendance' => $program->enable_qr_attendance,
+                'generate_certificates' => $program->generate_certificates,
+                'coordinator_name' => $program->program_coordinatior_name,
+                'coordinator_phone' => $program->program_coordinatior_phone,
+                'coordinator_email' => $program->program_coordinatior_email,
+                'image_file' => $program->image_file,
+                'image_url' => $program->image_file ? asset('storage/' . $program->image_file) : null,
             ]
         ]);
     }

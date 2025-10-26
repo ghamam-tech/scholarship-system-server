@@ -15,6 +15,36 @@ class ProgramApplicationController extends Controller
 {
 
     /**
+     * Admin: Get students available for invitation
+     */
+    public function getStudentsForInvitation(Request $request)
+    {
+        $user = $request->user();
+
+        // Check if user is admin
+        if (!$user || $user->role->value !== UserRole::ADMIN->value) {
+            return response()->json(['message' => 'Only admins can view students for invitation'], 403);
+        }
+
+        $students = Student::with(['user', 'applicant', 'approvedApplication.scholarship'])
+            ->whereHas('user')
+            ->whereHas('applicant')
+            ->get();
+
+        return response()->json([
+            'students' => $students->map(function ($student) {
+                return [
+                    'student_id' => $student->student_id,
+                    'name' => $student->applicant?->ar_name ?? $student->applicant?->en_name ?? 'N/A',
+                    'email' => $student->user?->email ?? 'N/A',
+                    'scholarship_id' => $student->approvedApplication?->scholarship?->scholarship_id ?? 'N/A',
+                    'scholarship_name' => $student->approvedApplication?->scholarship?->scholarship_name ?? 'N/A',
+                ];
+            })
+        ]);
+    }
+
+    /**
      * Admin: Invite multiple students to program
      */
     public function inviteMultipleStudents(Request $request, $programId)
@@ -22,7 +52,7 @@ class ProgramApplicationController extends Controller
         $user = $request->user();
 
         // Check if user is admin
-        if (!$user || $user->role !== UserRole::ADMIN) {
+        if (!$user || $user->role->value !== UserRole::ADMIN->value) {
             return response()->json(['message' => 'Only admins can invite students'], 403);
         }
 
@@ -30,6 +60,22 @@ class ProgramApplicationController extends Controller
             'student_ids' => ['required', 'array', 'min:1'],
             'student_ids.*' => ['integer', 'exists:students,student_id'],
         ]);
+
+        // Validate that all students have proper relationships
+        $invalidStudents = [];
+        foreach ($data['student_ids'] as $studentId) {
+            $student = Student::with(['user', 'applicant'])->find($studentId);
+            if (!$student || !$student->user || !$student->applicant) {
+                $invalidStudents[] = $studentId;
+            }
+        }
+
+        if (!empty($invalidStudents)) {
+            return response()->json([
+                'message' => 'Some students have missing user or applicant relationships',
+                'invalid_student_ids' => $invalidStudents
+            ], 422);
+        }
 
         $program = Program::find($programId);
         if (!$program) {
@@ -49,7 +95,7 @@ class ProgramApplicationController extends Controller
                     ->first();
 
                 if ($existingApplication) {
-                    $alreadyInvited[] = $studentId;
+                    $alreadyInvited[] = $existingApplication->load(['student.user', 'student.applicant']);
                     continue;
                 }
 
@@ -64,12 +110,42 @@ class ProgramApplicationController extends Controller
 
             DB::commit();
 
+            // Get all existing applications for this program
+            $allExistingApplications = ProgramApplication::with(['student.user', 'student.applicant'])
+                ->where('program_id', $programId)
+                ->get();
+
             return response()->json([
                 'message' => 'Invitations sent successfully',
                 'invited_count' => count($invitedApplications),
                 'already_invited_count' => count($alreadyInvited),
-                'applications' => $invitedApplications,
-                'already_invited_student_ids' => $alreadyInvited
+                'applications' => collect($invitedApplications)->map(function ($application) {
+                    return [
+                        'application_program_id' => $application->application_program_id,
+                        'student_id' => $application->student_id,
+                        'ar_name' => $application->student?->applicant?->ar_name ?? 'N/A',
+                        'email' => $application->student?->user?->email ?? 'N/A',
+                        'status' => $application->application_status,
+                    ];
+                }),
+                'already_invited_student_ids' => collect($alreadyInvited)->map(function ($application) {
+                    return [
+                        'application_program_id' => $application->application_program_id,
+                        'student_id' => $application->student_id,
+                        'ar_name' => $application->student?->applicant?->ar_name ?? 'N/A',
+                        'email' => $application->student?->user?->email ?? 'N/A',
+                        'status' => $application->application_status,
+                    ];
+                }),
+                'all_program_applications' => $allExistingApplications->map(function ($application) {
+                    return [
+                        'application_program_id' => $application->application_program_id,
+                        'student_id' => $application->student_id,
+                        'ar_name' => $application->student?->applicant?->ar_name ?? 'N/A',
+                        'email' => $application->student?->user?->email ?? 'N/A',
+                        'status' => $application->application_status,
+                    ];
+                })
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -88,7 +164,7 @@ class ProgramApplicationController extends Controller
         $user = $request->user();
 
         // Check if user is student
-        if (!$user || $user->role !== UserRole::STUDENT) {
+        if (!$user || $user->role->value !== UserRole::STUDENT->value) {
             return response()->json(['message' => 'Only students can accept invitations'], 403);
         }
 
@@ -131,13 +207,20 @@ class ProgramApplicationController extends Controller
         $user = $request->user();
 
         // Check if user is student
-        if (!$user || $user->role !== UserRole::STUDENT) {
+        if (!$user || $user->role->value !== UserRole::STUDENT->value) {
             return response()->json(['message' => 'Only students can reject invitations'], 403);
         }
 
+        // Debug: Check what we're receiving
+        \Log::info('Content-Type:', ['content_type' => $request->header('Content-Type')]);
+        \Log::info('All data:', $request->all());
+        \Log::info('Files:', $request->allFiles());
+        \Log::info('Input method:', ['method' => $request->method()]);
+
+        // Handle both JSON and form data
         $data = $request->validate([
             'excuse_reason' => ['required', 'string', 'max:1000'],
-            'excuse_file' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:5120'], // 5MB max
+            'excuse_file' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:5120'],
         ]);
 
         $application = ProgramApplication::with(['student.user', 'program'])->find($applicationId);
@@ -196,7 +279,7 @@ class ProgramApplicationController extends Controller
         $user = $request->user();
 
         // Check if user is admin
-        if (!$user || $user->role !== UserRole::ADMIN) {
+        if (!$user || $user->role->value !== UserRole::ADMIN->value) {
             return response()->json(['message' => 'Only admins can approve excuses'], 403);
         }
 
@@ -234,7 +317,7 @@ class ProgramApplicationController extends Controller
         $user = $request->user();
 
         // Check if user is admin
-        if (!$user || $user->role !== UserRole::ADMIN) {
+        if (!$user || $user->role->value !== UserRole::ADMIN->value) {
             return response()->json(['message' => 'Only admins can reject excuses'], 403);
         }
 
@@ -250,7 +333,7 @@ class ProgramApplicationController extends Controller
         }
 
         try {
-            $application->update(['application_status' => 'doesn_attend']);
+            $application->update(['application_status' => 'rejected_excuse']);
 
             return response()->json([
                 'message' => 'Excuse rejected successfully',
@@ -272,7 +355,7 @@ class ProgramApplicationController extends Controller
         $user = $request->user();
 
         // Check if user is student
-        if (!$user || $user->role !== UserRole::STUDENT) {
+        if (!$user || $user->role->value !== UserRole::STUDENT->value) {
             return response()->json(['message' => 'Only students can mark attendance'], 403);
         }
 
@@ -325,7 +408,7 @@ class ProgramApplicationController extends Controller
         $user = $request->user();
 
         // Check if user is admin
-        if (!$user || $user->role !== UserRole::ADMIN) {
+        if (!$user || $user->role->value !== UserRole::ADMIN->value) {
             return response()->json(['message' => 'Only admins can view program applications'], 403);
         }
 
@@ -334,13 +417,111 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Program not found'], 404);
         }
 
-        $applications = ProgramApplication::with(['student.user', 'program'])
+        $applications = ProgramApplication::with(['student.user', 'student.applicant', 'student.approvedApplication.scholarship', 'student.approvedApplication.application'])
             ->where('program_id', $programId)
+            ->whereHas('student') // Only get applications with valid students
             ->get();
 
         return response()->json([
-            'program' => $program,
-            'applications' => $applications
+            'program' => [
+                'program_id' => $program->program_id,
+                'title' => $program->title
+            ],
+            'applications' => $applications->map(function ($application) {
+                return [
+                    'application_id' => $application->application_program_id,
+                    'student_id' => $application->student_id,
+                    'name' => $application->student?->applicant?->ar_name ?? $application->student?->applicant?->en_name ?? 'N/A',
+                    'email' => $application->student?->user?->email ?? 'N/A',
+                    'status' => $application->application_status,
+                    'scholarship_id' => $application->student?->approvedApplication?->scholarship_id ?? null,
+                    'scholarship_name' => $application->student?->approvedApplication?->scholarship?->scholarship_name ?? 'N/A',
+                ];
+            })
+        ]);
+    }
+
+    /**
+     * Admin: Delete program application
+     */
+    public function deleteApplication(Request $request, $applicationId)
+    {
+        $user = $request->user();
+
+        // Check if user is admin
+        if (!$user || $user->role->value !== UserRole::ADMIN->value) {
+            return response()->json(['message' => 'Only admins can delete applications'], 403);
+        }
+
+        $application = ProgramApplication::with(['student.user', 'student.applicant', 'program'])
+            ->find($applicationId);
+
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
+
+        try {
+            // Delete excuse file if exists
+            if ($application->excuse_file && Storage::disk('public')->exists($application->excuse_file)) {
+                Storage::disk('public')->delete($application->excuse_file);
+            }
+
+            $application->delete();
+
+            return response()->json([
+                'message' => 'Application deleted successfully',
+                'deleted_application' => [
+                    'application_program_id' => $applicationId,
+                    'student_id' => $application->student_id,
+                    'ar_name' => $application->student->applicant->ar_name ?? 'N/A',
+                    'email' => $application->student->user->email,
+                    'program_title' => $application->program->title,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to delete application',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Admin: Get excuse details for an application
+     */
+    public function getExcuseDetails(Request $request, $applicationId)
+    {
+        $user = $request->user();
+
+        // Check if user is admin
+        if (!$user || $user->role->value !== UserRole::ADMIN->value) {
+            return response()->json(['message' => 'Only admins can view excuse details'], 403);
+        }
+
+        $application = ProgramApplication::with(['student.user', 'student.applicant', 'program'])
+            ->find($applicationId);
+
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
+
+        // Check if application has excuse
+        if ($application->application_status !== 'excuse') {
+            return response()->json(['message' => 'Application does not have an excuse'], 400);
+        }
+
+        return response()->json([
+            'application' => [
+                'application_id' => $application->application_program_id,
+                'excuse_reason' => $application->excuse_reason,
+                'excuse_file' => $application->excuse_file,
+                'excuse_file_url' => $application->excuse_file ? asset('storage/' . $application->excuse_file) : null,
+                'email' => $application->student->user->email,
+                'ar_name' => $application->student->applicant->ar_name,
+                'status' => $application->application_status,
+                'program_title' => $application->program->title,
+                'submitted_at' => $application->updated_at
+            ]
         ]);
     }
 
@@ -352,7 +533,7 @@ class ProgramApplicationController extends Controller
         $user = $request->user();
 
         // Check if user is student
-        if (!$user || $user->role !== UserRole::STUDENT) {
+        if (!$user || $user->role->value !== UserRole::STUDENT->value) {
             return response()->json(['message' => 'Only students can view their applications'], 403);
         }
 
@@ -371,6 +552,220 @@ class ProgramApplicationController extends Controller
     }
 
     /**
+     * Student: Get all programs that the student has applications for
+     */
+    public function getProgramsForStudent(Request $request)
+    {
+        $user = $request->user();
+
+        // Check if user is student
+        if (!$user || $user->role->value !== UserRole::STUDENT->value) {
+            return response()->json(['message' => 'Only students can view their programs'], 403);
+        }
+
+        $student = Student::where('user_id', $user->user_id)->first();
+        if (!$student) {
+            return response()->json(['message' => 'Student profile not found'], 404);
+        }
+
+        $applications = ProgramApplication::with(['program'])
+            ->where('student_id', $student->student_id)
+            ->get();
+
+        $programs = $applications->map(function ($application) {
+            // Get enrollment count for this program
+            $enrollmentCount = ProgramApplication::where('program_id', $application->program->program_id)
+                ->where('application_status', 'accepted')
+                ->count();
+
+            // Get total applications for this program
+            $totalApplications = ProgramApplication::where('program_id', $application->program->program_id)->count();
+
+            return [
+                'program_id' => $application->program->program_id,
+                'title' => $application->program->title,
+                'description' => $application->program->discription,
+                'date' => $application->program->date,
+                'location' => $application->program->location,
+                'country' => $application->program->country,
+                'category' => $application->program->category,
+                'program_status' => $application->program->program_status,
+                'start_date' => $application->program->start_date,
+                'end_date' => $application->program->end_date,
+
+
+                // Program image and QR
+                'image_file' => $application->program->image_file,
+                'image_url' => $application->program->image_file ? asset('storage/' . $application->program->image_file) : null,
+
+
+
+                'enrollment_text' => $enrollmentCount . ' enrolled',
+
+                // Application details
+                'application_status' => $application->application_status,
+                'application_id' => $application->application_program_id,
+
+
+
+            ];
+        });
+
+        return response()->json([
+            'student' => [
+                'student_id' => $student->student_id,
+                'name' => $student->applicant?->ar_name ?? $student->applicant?->en_name ?? 'N/A',
+                'email' => $user->email,
+            ],
+            'programs' => $programs,
+            'total_programs' => $programs->count()
+        ]);
+    }
+
+    /**
+     * Get program by ID
+     */
+    public function getProgramById(Request $request, $programId)
+    {
+        $user = $request->user();
+
+        // Check if user is authenticated
+        if (!$user) {
+            return response()->json(['message' => 'Authentication required'], 401);
+        }
+
+        $program = Program::find($programId);
+        if (!$program) {
+            return response()->json(['message' => 'Program not found'], 404);
+        }
+
+        // Get enrollment count for this program
+        $enrollmentCount = ProgramApplication::where('program_id', $programId)
+            ->where('application_status', 'accepted')
+            ->count();
+
+        // Get total applications for this program
+        $totalApplications = ProgramApplication::where('program_id', $programId)->count();
+
+        // Get program coordinator details
+        $coordinator = [
+            'name' => $program->program_coordinatior_name,
+            'phone' => $program->program_coordinatior_phone,
+            'email' => $program->program_coordinatior_email,
+        ];
+
+        return response()->json([
+            'program' => [
+                'program_id' => $program->program_id,
+                'title' => $program->title,
+                'description' => $program->discription,
+                'date' => $program->date,
+                'location' => $program->location,
+                'country' => $program->country,
+                'category' => $program->category,
+                'program_status' => $program->program_status,
+                'start_date' => $program->start_date,
+                'end_date' => $program->end_date,
+                'enable_qr_attendance' => $program->enable_qr_attendance,
+                'generate_certificates' => $program->generate_certificates,
+
+                // Program coordinator details
+                'coordinator' => $coordinator,
+
+                // Program image and QR
+                'image_file' => $program->image_file,
+                'image_url' => $program->image_file ? asset('storage/' . $program->image_file) : null,
+                'qr_url' => $program->qr_url,
+
+                // Enrollment and application statistics
+                'enrollment_count' => $enrollmentCount,
+                'total_applications' => $totalApplications,
+                'enrollment_text' => $enrollmentCount . ' enrolled',
+
+                // Timestamps
+                'created_at' => $program->created_at,
+                'updated_at' => $program->updated_at,
+            ]
+        ]);
+    }
+
+    /**
+     * Get student's program application by Program ID
+     */
+    public function getMyProgramApplication(Request $request, $programId)
+    {
+        $user = $request->user();
+
+        // Check if user is student
+        if (!$user || $user->role->value !== UserRole::STUDENT->value) {
+            return response()->json(['message' => 'Only students can view their program applications'], 403);
+        }
+
+        // Find the student record for this user
+        $student = Student::where('user_id', $user->user_id)->first();
+        if (!$student) {
+            return response()->json(['message' => 'Student profile not found'], 404);
+        }
+
+        // Find the application for this student and program
+        $application = ProgramApplication::with(['student.user', 'student.applicant', 'program', 'student.approvedApplication.scholarship'])
+            ->where('program_id', $programId)
+            ->where('student_id', $student->student_id)
+            ->first();
+
+        if (!$application) {
+            return response()->json(['message' => 'No application found for this program'], 404);
+        }
+
+        return response()->json([
+            'application' => [
+                'application_id' => $application->application_program_id,
+                'student_id' => $application->student_id,
+                'program_id' => $application->program_id,
+                'application_status' => $application->application_status,
+                'excuse_reason' => $application->excuse_reason,
+                'excuse_file' => $application->excuse_file,
+                'excuse_file_url' => $application->excuse_file ? asset('storage/' . $application->excuse_file) : null,
+                'certificate_token' => $application->certificate_token,
+                'comment' => $application->comment,
+                'created_at' => $application->created_at,
+                'updated_at' => $application->updated_at,
+
+                // Student details
+                'student' => [
+                    'student_id' => $application->student->student_id,
+                    'name' => $application->student->applicant?->ar_name ?? $application->student->applicant?->en_name ?? 'N/A',
+                    'email' => $application->student->user?->email ?? 'N/A',
+                    'specialization' => $application->student->specialization ?? 'N/A',
+                    'scholarship_name' => $application->student->approvedApplication?->scholarship?->scholarship_name ?? 'N/A',
+                ],
+
+                // Program details
+                'program' => [
+                    'program_id' => $application->program->program_id,
+                    'title' => $application->program->title,
+                    'description' => $application->program->discription,
+                    'date' => $application->program->date,
+                    'location' => $application->program->location,
+                    'country' => $application->program->country,
+                    'category' => $application->program->category,
+                    'program_status' => $application->program->program_status,
+                    'start_date' => $application->program->start_date,
+                    'end_date' => $application->program->end_date,
+                    'enable_qr_attendance' => $application->program->enable_qr_attendance,
+                    'generate_certificates' => $application->program->generate_certificates,
+                    'coordinator_name' => $application->program->program_coordinatior_name,
+                    'coordinator_phone' => $application->program->program_coordinatior_phone,
+                    'coordinator_email' => $application->program->program_coordinatior_email,
+                    'image_file' => $application->program->image_file,
+                    'image_url' => $application->program->image_file ? asset('storage/' . $application->program->image_file) : null,
+                    'qr_url' => $application->program->qr_url,
+                ]
+            ]
+        ]);
+    }
+
+    /**
      * Student: QR Code attendance with token (requires student authentication)
      */
     public function qrAttendanceWithToken(Request $request, $token)
@@ -378,7 +773,7 @@ class ProgramApplicationController extends Controller
         $user = $request->user();
 
         // Check if user is student
-        if (!$user || $user->role !== UserRole::STUDENT) {
+        if (!$user || $user->role->value !== UserRole::STUDENT->value) {
             return response()->json(['message' => 'Only students can mark attendance'], 403);
         }
 
@@ -387,7 +782,7 @@ class ProgramApplicationController extends Controller
         ]);
 
         // Find program by QR token
-        $program = Program::where('qr_url', 'like', "%{$token}")->first();
+        $program = Program::where('qr_url', $token)->first();
 
         if (!$program) {
             return response()->json(['message' => 'Invalid QR code'], 404);
@@ -439,6 +834,119 @@ class ProgramApplicationController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to mark attendance',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Student: Mark attendance via QR token (requires student authentication)
+     * Only students invited to the program can mark attendance
+     */
+    public function markAttendanceViaQR(Request $request, $token)
+    {
+        $user = $request->user();
+
+        // Check if user is student
+        if (!$user || $user->role->value !== UserRole::STUDENT->value) {
+            return response()->json(['message' => 'Only students can mark attendance'], 403);
+        }
+
+        // Find the student record for this user
+        $student = Student::with(['user', 'applicant'])->where('user_id', $user->user_id)->first();
+
+        if (!$student) {
+            return response()->json(['message' => 'Student profile not found'], 404);
+        }
+
+        // Find program by QR token
+        $program = Program::where('qr_url', $token)->first();
+
+        if (!$program) {
+            return response()->json(['message' => 'Invalid QR code'], 404);
+        }
+
+        // Check if QR attendance is enabled
+        if (!$program->enable_qr_attendance) {
+            return response()->json(['message' => 'QR attendance is not enabled for this program'], 400);
+        }
+
+        // Find application for this student and program
+        $application = ProgramApplication::where('student_id', $student->student_id)
+            ->where('program_id', $program->program_id)
+            ->first();
+
+        if (!$application) {
+            return response()->json(['message' => 'You are not invited to this program'], 404);
+        }
+
+        // Check if application is in accepted or attend status
+        if ($application->application_status !== 'accepted' && $application->application_status !== 'attend') {
+            return response()->json(['message' => 'You must accept the invitation before marking attendance'], 400);
+        }
+
+        // Prepare response data
+        $responseData = [
+            'success' => true,
+            'program' => [
+                'program_id' => $program->program_id,
+                'title' => $program->title,
+                'date' => $program->date,
+                'location' => $program->location,
+            ],
+            'student' => [
+                'student_id' => $student->student_id,
+                'name' => $student->applicant?->ar_name ?? $student->applicant?->en_name ?? 'N/A',
+                'email' => $student->user?->email ?? 'N/A',
+            ],
+            'application' => [
+                'application_id' => $application->application_program_id,
+                'status' => $application->application_status,
+                'marked_at' => $application->updated_at,
+            ]
+        ];
+
+        // Check if attendance is already marked
+        if ($application->application_status === 'attend') {
+            $responseData['message'] = 'Attendance already marked';
+            return response()->json($responseData);
+        }
+
+        try {
+            // Use database transaction to prevent race conditions
+            DB::beginTransaction();
+            
+            // Lock the application row to prevent concurrent updates
+            $lockedApplication = ProgramApplication::where('student_id', $student->student_id)
+                ->where('program_id', $program->program_id)
+                ->lockForUpdate()
+                ->first();
+
+            // Double-check status after locking
+            if ($lockedApplication->application_status === 'attend') {
+                DB::rollBack();
+                $responseData['message'] = 'Attendance already marked';
+                $responseData['application']['status'] = $lockedApplication->application_status;
+                $responseData['application']['marked_at'] = $lockedApplication->updated_at;
+                return response()->json($responseData);
+            }
+
+            // Update status to attend
+            $lockedApplication->update(['application_status' => 'attend']);
+            
+            DB::commit();
+
+            $responseData['message'] = 'Attendance marked successfully! Welcome to the program.';
+            $responseData['application']['status'] = 'attend';
+            $responseData['application']['marked_at'] = $lockedApplication->fresh()->updated_at;
+
+            return response()->json($responseData);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Failed to mark attendance',
+                'success' => false,
                 'error' => $e->getMessage()
             ], 500);
         }
