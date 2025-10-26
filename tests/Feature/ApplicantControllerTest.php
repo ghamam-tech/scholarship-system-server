@@ -65,6 +65,7 @@ class ApplicantControllerTest extends TestCase
                     [
                         'qualification_type' => 'bachelor',
                         'institute_name' => 'King Saud University',
+                        'country' => 'Saudi Arabia',
                         'year_of_graduation' => 2020,
                         'cgpa' => 3.8,
                         'cgpa_out_of' => 4.0,
@@ -76,6 +77,7 @@ class ApplicantControllerTest extends TestCase
                     [
                         'qualification_type' => 'high_school',
                         'institute_name' => 'Riyadh High School',
+                        'country' => 'Saudi Arabia',
                         'year_of_graduation' => 2016,
                         'cgpa' => 95.5,
                         'cgpa_out_of' => 100,
@@ -110,6 +112,7 @@ class ApplicantControllerTest extends TestCase
                             'qualification_id',
                             'qualification_type',
                             'institute_name',
+                            'country',
                             'year_of_graduation',
                             'document_file',
                         ],
@@ -130,12 +133,14 @@ class ApplicantControllerTest extends TestCase
             'applicant_id' => $this->applicant->applicant_id,
             'qualification_type' => 'bachelor',
             'institute_name' => 'King Saud University',
+            'country' => 'Saudi Arabia',
         ]);
 
         $this->assertDatabaseHas('qualifications', [
             'applicant_id' => $this->applicant->applicant_id,
             'qualification_type' => 'high_school',
             'institute_name' => 'Riyadh High School',
+            'country' => 'Saudi Arabia',
         ]);
     }
 
@@ -269,6 +274,7 @@ class ApplicantControllerTest extends TestCase
                             'qualification_id',
                             'qualification_type',
                             'institute_name',
+                            'country',
                         ],
                     ],
                 ],
@@ -298,6 +304,7 @@ class ApplicantControllerTest extends TestCase
         $qualificationData = [
             'qualification_type' => 'master',
             'institute_name' => 'MIT',
+            'country' => 'USA',
             'year_of_graduation' => 2022,
             'cgpa' => 3.9,
             'cgpa_out_of' => 4.0,
@@ -318,6 +325,7 @@ class ApplicantControllerTest extends TestCase
                     'qualification_id',
                     'qualification_type',
                     'institute_name',
+                    'country',
                     'year_of_graduation',
                     'document_file',
                 ],
@@ -327,6 +335,7 @@ class ApplicantControllerTest extends TestCase
             'applicant_id' => $this->applicant->applicant_id,
             'qualification_type' => 'master',
             'institute_name' => 'MIT',
+            'country' => 'USA',
         ]);
     }
 
@@ -336,6 +345,7 @@ class ApplicantControllerTest extends TestCase
 
         $updateData = [
             'institute_name' => 'Updated Institute',
+            'country' => 'France',
             'cgpa' => 3.95,
             'document_file' => UploadedFile::fake()->create('updated_cert.pdf', 1000),
         ];
@@ -350,6 +360,7 @@ class ApplicantControllerTest extends TestCase
                 'qualification' => [
                     'qualification_id',
                     'institute_name',
+                    'country',
                     'cgpa',
                 ],
             ]);
@@ -357,6 +368,7 @@ class ApplicantControllerTest extends TestCase
         $this->assertDatabaseHas('qualifications', [
             'qualification_id' => $qualification->qualification_id,
             'institute_name' => 'Updated Institute',
+            'country' => 'France',
             'cgpa' => 3.95,
         ]);
     }
@@ -514,6 +526,7 @@ class ApplicantControllerTest extends TestCase
                     [
                         'qualification_type' => 'bachelor',
                         'institute_name' => 'King Saud University',
+                        'country' => 'Saudi Arabia',
                         'year_of_graduation' => 2020,
                         'document_file' => UploadedFile::fake()->create('cert.txt', 1000), // Invalid file type
                     ],
@@ -560,6 +573,7 @@ class ApplicantControllerTest extends TestCase
                     [
                         'qualification_type' => 'bachelor',
                         'institute_name' => 'King Saud University',
+                        'country' => 'Saudi Arabia',
                         'year_of_graduation' => 2020,
                         'document_file' => UploadedFile::fake()->create('cert.pdf', 15000), // Too large
                     ],
@@ -612,6 +626,7 @@ class ApplicantControllerTest extends TestCase
                     [
                         'qualification_type' => 'bachelor',
                         'institute_name' => 'King Saud University',
+                        'country' => 'Saudi Arabia',
                         'year_of_graduation' => 2020,
                         'document_file' => UploadedFile::fake()->create('cert.pdf', 1000),
                     ],

@@ -48,6 +48,7 @@ class ApplicantController extends Controller
             'academic_info.qualifications' => ['required', 'array', 'min:1'],
             'academic_info.qualifications.*.qualification_type' => ['required', Rule::in(['high_school', 'diploma', 'bachelor', 'master', 'phd', 'other'])],
             'academic_info.qualifications.*.institute_name' => ['required', 'string', 'max:255'],
+            'academic_info.qualifications.*.country' => ['required', 'string', 'max:100'],
             'academic_info.qualifications.*.year_of_graduation' => ['required', 'integer', 'min:1900', 'max:' . (date('Y') + 5)],
             'academic_info.qualifications.*.cgpa' => ['nullable', 'numeric', 'min:0'],
             'academic_info.qualifications.*.cgpa_out_of' => ['nullable', 'numeric', 'min:0'],
@@ -90,6 +91,7 @@ class ApplicantController extends Controller
                     'user_id' => $user->user_id,
                     'qualification_type' => $qualData['qualification_type'],
                     'institute_name' => $qualData['institute_name'],
+                    'country' => $qualData['country'],
                     'year_of_graduation' => $qualData['year_of_graduation'],
                     'cgpa' => $qualData['cgpa'] ?? null,
                     'cgpa_out_of' => $qualData['cgpa_out_of'] ?? null,
@@ -257,6 +259,7 @@ class ApplicantController extends Controller
         $data = $request->validate([
             'qualification_type' => ['required', Rule::in(['high_school', 'diploma', 'bachelor', 'master', 'phd', 'other'])],
             'institute_name' => ['required', 'string', 'max:255'],
+            'country' => ['required', 'string', 'max:100'],
             'year_of_graduation' => ['required', 'integer', 'min:1900', 'max:' . (date('Y') + 5)],
             'cgpa' => ['nullable', 'numeric', 'min:0'],
             'cgpa_out_of' => ['nullable', 'numeric', 'min:0'],
@@ -274,6 +277,7 @@ class ApplicantController extends Controller
                 'user_id' => $user->user_id,
                 'qualification_type' => $data['qualification_type'],
                 'institute_name' => $data['institute_name'],
+                'country' => $data['country'],
                 'year_of_graduation' => $data['year_of_graduation'],
                 'cgpa' => $data['cgpa'] ?? null,
                 'cgpa_out_of' => $data['cgpa_out_of'] ?? null,
@@ -311,6 +315,7 @@ class ApplicantController extends Controller
         $data = $request->validate([
             'qualification_type' => ['sometimes', Rule::in(['high_school', 'diploma', 'bachelor', 'master', 'phd', 'other'])],
             'institute_name' => ['sometimes', 'string', 'max:255'],
+            'country' => ['sometimes', 'string', 'max:100'],
             'year_of_graduation' => ['sometimes', 'integer', 'min:1900', 'max:' . (date('Y') + 5)],
             'cgpa' => ['nullable', 'numeric', 'min:0'],
             'cgpa_out_of' => ['nullable', 'numeric', 'min:0'],
@@ -335,6 +340,7 @@ class ApplicantController extends Controller
             $qualification->update(array_filter([
                 'qualification_type' => $data['qualification_type'] ?? null,
                 'institute_name' => $data['institute_name'] ?? null,
+                'country' => $data['country'] ?? null,
                 'year_of_graduation' => $data['year_of_graduation'] ?? null,
                 'cgpa' => array_key_exists('cgpa', $data) ? $data['cgpa'] : null,
                 'cgpa_out_of' => array_key_exists('cgpa_out_of', $data) ? $data['cgpa_out_of'] : null,

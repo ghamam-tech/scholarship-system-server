@@ -23,6 +23,7 @@ class QualificationFactory extends Factory
             'user_id' => User::factory(),
             'qualification_type' => fake()->randomElement(['high_school', 'diploma', 'bachelor', 'master', 'phd', 'other']),
             'institute_name' => fake()->company() . ' University',
+            'country' => fake()->country(),
             'year_of_graduation' => fake()->numberBetween(2010, 2024),
             'cgpa' => fake()->randomFloat(2, 2.0, 4.0),
             'cgpa_out_of' => 4.0,
