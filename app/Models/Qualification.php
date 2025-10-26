@@ -13,6 +13,7 @@ class Qualification extends Model
     protected $fillable = [
         'qualification_type',
         'institute_name',
+        'country',
         'year_of_graduation',
         'cgpa',
         'cgpa_out_of',

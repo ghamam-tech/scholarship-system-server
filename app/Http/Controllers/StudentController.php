@@ -103,6 +103,7 @@ class StudentController extends Controller
             'academic_info.qualifications.*.qualification_id' => ['sometimes', 'integer', 'exists:qualifications,qualification_id'],
             'academic_info.qualifications.*.qualification_type' => ['sometimes', Rule::in(['high_school', 'diploma', 'bachelor', 'master', 'phd', 'other'])],
             'academic_info.qualifications.*.institute_name' => ['sometimes', 'string', 'max:255'],
+            'academic_info.qualifications.*.country' => ['sometimes', 'string', 'max:100'],
             'academic_info.qualifications.*.year_of_graduation' => ['sometimes', 'integer', 'min:1900', 'max:' . (date('Y') + 5)],
             'academic_info.qualifications.*.cgpa' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'academic_info.qualifications.*.cgpa_out_of' => ['sometimes', 'nullable', 'numeric', 'min:0'],
@@ -265,6 +266,7 @@ class StudentController extends Controller
         $fields = [
             'qualification_type',
             'institute_name',
+            'country',
             'year_of_graduation',
             'cgpa',
             'cgpa_out_of',
@@ -289,6 +291,7 @@ class StudentController extends Controller
         $validated = Validator::make($data, [
             'qualification_type' => ['required', Rule::in(['high_school', 'diploma', 'bachelor', 'master', 'phd', 'other'])],
             'institute_name' => ['required', 'string', 'max:255'],
+            'country' => ['required', 'string', 'max:100'],
             'year_of_graduation' => ['required', 'integer', 'min:1900', 'max:' . (date('Y') + 5)],
             'cgpa' => ['nullable', 'numeric', 'min:0'],
             'cgpa_out_of' => ['nullable', 'numeric', 'min:0'],
@@ -317,6 +320,7 @@ class StudentController extends Controller
             'user_id' => $user->user_id,
             'qualification_type' => $validated['qualification_type'],
             'institute_name' => $validated['institute_name'],
+            'country' => $validated['country'],
             'year_of_graduation' => $validated['year_of_graduation'],
             'cgpa' => $validated['cgpa'] ?? null,
             'cgpa_out_of' => $validated['cgpa_out_of'] ?? null,
