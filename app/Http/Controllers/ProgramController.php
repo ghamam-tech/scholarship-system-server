@@ -201,8 +201,8 @@ class ProgramController extends Controller
             DB::beginTransaction();
 
             // Debug logging
-            \Log::info('Update Request Data:', $data);
-            \Log::info('Request All Data:', $request->all());
+           Log::info('Update Request Data:', $data);
+           Log::info('Request All Data:', $request->all());
 
             // Handle boolean values for JSON
             if (isset($data['enable_qr_attendance'])) {
@@ -227,7 +227,7 @@ class ProgramController extends Controller
             }
 
             // Debug: Log what data we're about to update
-            \Log::info('Data being sent to update:', $data);
+        Log::debug('Data being sent to update:', $data);
 
             // Update the program
             $program->update($data);
@@ -240,7 +240,7 @@ class ProgramController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Update failed:', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            Log::error('Update failed:', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json([
                 'message' => 'Failed to update program',
                 'error' => $e->getMessage()
@@ -411,7 +411,7 @@ class ProgramController extends Controller
         ]);
     }
 
-    
+
 
     /**
      * Format program response to ensure proper boolean values

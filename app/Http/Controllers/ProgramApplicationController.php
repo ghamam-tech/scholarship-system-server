@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Enums\UserRole;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Hash;
 
@@ -212,10 +213,10 @@ class ProgramApplicationController extends Controller
         }
 
         // Debug: Check what we're receiving
-        \Log::info('Content-Type:', ['content_type' => $request->header('Content-Type')]);
-        \Log::info('All data:', $request->all());
-        \Log::info('Files:', $request->allFiles());
-        \Log::info('Input method:', ['method' => $request->method()]);
+       Log::info('Content-Type:', ['content_type' => $request->header('Content-Type')]);
+       Log::info('All data:', $request->all());
+       Log::info('Files:', $request->allFiles());
+       Log::info('Input method:', ['method' => $request->method()]);
 
         // Handle both JSON and form data
         $data = $request->validate([
