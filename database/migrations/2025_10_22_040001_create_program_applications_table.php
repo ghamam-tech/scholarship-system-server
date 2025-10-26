@@ -16,7 +16,7 @@ return new class extends Migration
             // Update existing table
             Schema::table('program_applications', function (Blueprint $table) {
                 // Update the enum to include all required values
-                $table->enum('application_status', ['invite', 'accepted', 'excuse', 'approved_excuse', 'doesn_attend', 'attend', 'approved', 'rejected', 'completed', 'doesnt_respond'])->default('invite')->change();
+                $table->enum('application_status', ['invite', 'accepted', 'excuse', 'approved_excuse', 'rejected_excuse', 'doesn_attend', 'attend', 'approved', 'rejected', 'completed', 'doesnt_respond'])->default('invite')->change();
 
                 // Add excuse fields if they don't exist
                 if (!Schema::hasColumn('program_applications', 'excuse_reason')) {
@@ -35,7 +35,7 @@ return new class extends Migration
                 $table->id('application_program_id');
 
                 // Application Details
-                $table->enum('application_status', ['invite', 'accepted', 'excuse', 'approved_excuse', 'doesn_attend', 'attend', 'approved', 'rejected', 'completed', 'doesnt_respond'])->default('invite');
+                $table->enum('application_status', ['invite', 'accepted', 'excuse', 'approved_excuse', 'rejected_excuse', 'doesn_attend', 'attend', 'approved', 'rejected', 'completed', 'doesnt_respond'])->default('invite');
                 $table->string('certificate_token')->nullable();
                 $table->text('comment')->nullable();
 
