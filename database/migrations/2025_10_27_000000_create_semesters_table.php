@@ -4,8 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class extends Migration {
     /**
      * Run the migrations.
      */
@@ -21,8 +20,8 @@ return new class extends Migration
             $table->decimal('credit_hours', 5, 2)->nullable();
             $table->unsignedSmallInteger('total_subjects')->nullable();
             $table->string('status', 50)->nullable();
-            $table->decimal('cgpa', 4, 2)->nullable();
-            $table->decimal('cgpa_out_of', 4, 2)->nullable();
+            $table->decimal('cgpa', 5, 2)->nullable();
+            $table->decimal('cgpa_out_of', 5, 2)->nullable();
             $table->unsignedTinyInteger('semester_number')->nullable();
             $table->date('starting_date')->nullable();
             $table->date('ending_date')->nullable();

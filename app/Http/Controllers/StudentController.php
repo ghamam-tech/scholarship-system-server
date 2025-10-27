@@ -32,18 +32,19 @@ class StudentController extends Controller
         $latestStatus = $user->currentStatus;
         $applicant = $user->applicant;
 
-        $response = [
-            'latest_status' => $latestStatus?->status_name,
-            'is_completed' => $applicant?->is_completed ?? false,
-        ];
-
         $approvedApplication = ApprovedApplicantApplication::with('scholarship')
             ->where('user_id', $user->user_id)
-            ->where('has_accepted_scholarship', false)
+            // ->where('has_accepted_scholarship', false)
             ->latest('created_at')
             ->first();
 
-        if ($approvedApplication) {
+        $response = [
+            'latest_status' => $latestStatus?->status_name,
+            'is_completed' => $applicant?->is_completed ?? false,
+            'scholarship_id' => $approvedApplication->scholarship_id
+        ];
+
+        if (!$approvedApplication->has_accepted_scholarship) {
             $response['apprroved_application_id'] = $approvedApplication->approved_application_id;
 
             if ($approvedApplication->scholarship) {
@@ -183,6 +184,94 @@ class StudentController extends Controller
         );
 
         return response()->json(['applicant' => $applicant]);
+    }
+
+    /**
+     * Student-only: Complete studying information and upload offer letter.
+     */
+    public function completeStudyingInfo(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $roleValue = is_object($user->role) ? $user->role->value : $user->role;
+        if ($roleValue !== UserRole::STUDENT->value) {
+            return response()->json(['message' => 'Only students can complete studying info'], 403);
+        }
+
+        $student = Student::where('user_id', $user->user_id)->first();
+
+        if (!$student) {
+            return response()->json(['message' => 'Student profile not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'specialization' => ['required', 'string', 'max:255'],
+            'total_semesters_number' => ['required', 'integer', 'min:1'],
+            'university_id' => ['required', 'integer', 'exists:universities,university_id'],
+            'language_of_study' => ['required', 'string', 'max:100'],
+            'yearly_tuition_fees' => ['required', 'numeric', 'min:0'],
+            'country_id' => ['required', 'integer', 'exists:countries,country_id'],
+            'offer_letter' => ['required', 'file', 'mimes:pdf,jpeg,png,jpg', 'max:10240'],
+        ]);
+
+        $existingOfferLetter = $student->offer_letter;
+        $newOfferLetterPath = null;
+
+        try {
+            DB::beginTransaction();
+
+            if ($request->hasFile('offer_letter')) {
+                $file = $request->file('offer_letter');
+                $filename = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
+                $newOfferLetterPath = $file->storeAs(
+                    "students/{$student->student_id}/documents",
+                    $filename,
+                    's3'
+                );
+            }
+
+            $student->update([
+                'specialization' => $validated['specialization'],
+                'total_semesters_number' => $validated['total_semesters_number'],
+                'university_id' => $validated['university_id'],
+                'language_of_study' => $validated['language_of_study'],
+                'yearly_tuition_fees' => $validated['yearly_tuition_fees'],
+                'country_id' => $validated['country_id'],
+                'offer_letter' => $newOfferLetterPath ?? $existingOfferLetter,
+            ]);
+
+            DB::commit();
+
+            if ($newOfferLetterPath && $existingOfferLetter && $existingOfferLetter !== $newOfferLetterPath) {
+                Storage::disk('s3')->delete($existingOfferLetter);
+            }
+
+            $student->refresh();
+            $student->setAttribute(
+                'offer_letter_url',
+                $student->offer_letter ? Storage::disk('s3')->url($student->offer_letter) : null
+            );
+
+            return response()->json([
+                'message' => 'Studying information completed successfully',
+                'student' => $student,
+            ], 200);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            if ($newOfferLetterPath) {
+                Storage::disk('s3')->delete($newOfferLetterPath);
+            }
+
+            return response()->json([
+                'message' => 'Failed to complete studying information',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     private function handleDocumentUploads(Request $request, Applicant $applicant): void

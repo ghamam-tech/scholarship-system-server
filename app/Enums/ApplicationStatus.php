@@ -18,4 +18,6 @@ enum ApplicationStatus: string
     case REJECTED_SCHOLARSHIP = 'rejected_scholarship';
     case MEETING_REQUESTED = 'meeting_requested';
     case ADDED_MANUALLY = 'added_manually';
+    case STARTED_SEMESTER = 'started_semester';
+    case COMPLETED_SEMESTER = 'completed_semester';
 }
