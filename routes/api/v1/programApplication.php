@@ -35,6 +35,9 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
 
     // Update application status (accepted/attend) for multiple applications
     Route::patch('admin/programs/{programId}/applications/status', [ProgramApplicationController::class, 'updateApplicationStatus']);
+
+    // Generate missing certificate tokens for existing attendance records
+    Route::post('admin/programs/{programId}/generate-certificates', [ProgramApplicationController::class, 'generateMissingCertificateTokens']);
 });
 
 // Student-only routes - require authentication and student role

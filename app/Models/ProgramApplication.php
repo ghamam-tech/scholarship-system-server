@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class ProgramApplication extends Model
 {
@@ -20,6 +21,35 @@ class ProgramApplication extends Model
         'excuse_reason',
         'excuse_file'
     ];
+
+    /**
+     * Boot the model and add event listeners
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Automatically generate certificate token when status becomes 'attend'
+        static::updating(function ($programApplication) {
+            if (
+                $programApplication->isDirty('application_status') &&
+                $programApplication->application_status === 'attend' &&
+                !$programApplication->certificate_token
+            ) {
+
+                // Load the program relationship to check conditions
+                $program = $programApplication->program;
+
+                if (
+                    $program &&
+                    $program->program_status === 'completed' &&
+                    $program->generate_certificates
+                ) {
+                    $programApplication->certificate_token = Str::random(32);
+                }
+            }
+        });
+    }
 
     /**
      * Get the student that owns the application.
