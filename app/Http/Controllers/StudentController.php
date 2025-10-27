@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ApprovedApplicantApplication;
 use App\Models\Scholarship;
 use App\Models\Student;
+use App\Models\Semester;
 use App\Models\User;
 use App\Models\Applicant;
 use App\Models\UserStatus;
@@ -539,6 +540,28 @@ class StudentController extends Controller
             ];
         }
 
+        $semesters = Semester::where('user_id', $student->user_id)
+            ->orderBy('semester_number')
+            ->orderBy('starting_date')
+            ->get()
+            ->map(function (Semester $semester) {
+                return [
+                    'semester_id' => $semester->semester_id,
+                    'semester_number' => $semester->semester_number,
+                    'status' => $semester->status,
+                    'credit_hours' => $semester->credit_hours,
+                    'total_subjects' => $semester->total_subjects,
+                    'cgpa' => $semester->cgpa,
+                    'cgpa_out_of' => $semester->cgpa_out_of,
+                    'starting_date' => $semester->starting_date,
+                    'ending_date' => $semester->ending_date,
+                    'transcript_path' => $semester->transcript_path,
+                    'transcript_url' => $semester->transcript_path ? Storage::disk('s3')->url($semester->transcript_path) : null,
+                    'created_at' => $semester->created_at,
+                    'updated_at' => $semester->updated_at,
+                ];
+            })->values();
+
         $statusTrail = $statuses->map(function (UserStatus $status) {
             return [
                 'status_name' => $status->status_name,
@@ -558,7 +581,7 @@ class StudentController extends Controller
                     'qualifications' => $qualifications,
                 ],
                 'program' => $program,
-                'semesters' => [],
+                'semesters' => $semesters,
                 'scholarship' => $scholarship,
                 'kpi' => [
                     'academicScore' => 85,
