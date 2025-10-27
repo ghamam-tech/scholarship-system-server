@@ -387,12 +387,32 @@ class ProgramApplicationController extends Controller
         }
 
         try {
-            $application->update(['application_status' => 'attend']);
+            // Generate certificate token if program is completed and generate_certificates is enabled
+            $certificateToken = null;
+            if ($application->program->program_status === 'completed' && $application->program->generate_certificates) {
+                $certificateToken = \Illuminate\Support\Str::random(32);
+            }
 
-            return response()->json([
+            // Update status to attend and certificate token
+            $updateData = ['application_status' => 'attend'];
+            if ($certificateToken) {
+                $updateData['certificate_token'] = $certificateToken;
+            }
+
+            $application->update($updateData);
+
+            $responseData = [
                 'message' => 'Attendance marked successfully',
                 'application' => $application
-            ]);
+            ];
+
+            // Add certificate token to response if generated
+            if ($certificateToken) {
+                $responseData['certificate_token'] = $certificateToken;
+                $responseData['message'] = 'Attendance marked successfully! Certificate is now available.';
+            }
+
+            return response()->json($responseData);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to mark attendance',
@@ -831,9 +851,21 @@ class ProgramApplicationController extends Controller
         }
 
         try {
-            $application->update(['application_status' => 'attend']);
+            // Generate certificate token if program is completed and generate_certificates is enabled
+            $certificateToken = null;
+            if ($application->program->program_status === 'completed' && $application->program->generate_certificates) {
+                $certificateToken = \Illuminate\Support\Str::random(32);
+            }
 
-            return response()->json([
+            // Update status to attend and certificate token
+            $updateData = ['application_status' => 'attend'];
+            if ($certificateToken) {
+                $updateData['certificate_token'] = $certificateToken;
+            }
+
+            $application->update($updateData);
+
+            $responseData = [
                 'message' => 'Attendance marked successfully',
                 'application' => $application->load(['student.user', 'program']),
                 'student' => [
@@ -841,7 +873,15 @@ class ProgramApplicationController extends Controller
                     'name' => $student->en_name ?? $student->ar_name,
                     'email' => $user->email
                 ]
-            ]);
+            ];
+
+            // Add certificate token to response if generated
+            if ($certificateToken) {
+                $responseData['certificate_token'] = $certificateToken;
+                $responseData['message'] = 'Attendance marked successfully! Certificate is now available.';
+            }
+
+            return response()->json($responseData);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to mark attendance',
@@ -1111,9 +1151,23 @@ class ProgramApplicationController extends Controller
                     continue;
                 }
 
-                $application->update(['application_status' => $appData['status']]);
+                // Prepare update data
+                $updateData = ['application_status' => $appData['status']];
 
-                $updatedApplications[] = [
+                // Generate certificate token if status is being set to 'attend'
+                if ($appData['status'] === 'attend') {
+                    // Check if program is completed and certificate generation is enabled
+                    if ($program->program_status === 'completed' && $program->generate_certificates) {
+                        // Only generate token if one doesn't already exist
+                        if (!$application->certificate_token) {
+                            $updateData['certificate_token'] = \Illuminate\Support\Str::random(32);
+                        }
+                    }
+                }
+
+                $application->update($updateData);
+
+                $applicationData = [
                     'application_id' => $application->application_program_id,
                     'student_id' => $application->student_id,
                     'name' => $application->student?->applicant?->ar_name ?? $application->student?->applicant?->en_name ?? 'N/A',
@@ -1122,6 +1176,14 @@ class ProgramApplicationController extends Controller
                     'new_status' => $appData['status'],
                     'updated_at' => $application->updated_at,
                 ];
+
+                // Include certificate token if it was generated
+                if ($appData['status'] === 'attend' && isset($updateData['certificate_token'])) {
+                    $applicationData['certificate_token'] = $updateData['certificate_token'];
+                    $applicationData['certificate_generated'] = true;
+                }
+
+                $updatedApplications[] = $applicationData;
             }
 
             DB::commit();
@@ -1137,6 +1199,71 @@ class ProgramApplicationController extends Controller
             DB::rollBack();
             return response()->json([
                 'message' => 'Failed to update application statuses',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Admin: Generate certificate tokens for existing attendance records
+     * This method can be used to fix existing records that should have certificate tokens
+     */
+    public function generateMissingCertificateTokens(Request $request, $programId)
+    {
+        $user = $request->user();
+
+        // Check if user is admin
+        if (!$user || $user->role->value !== UserRole::ADMIN->value) {
+            return response()->json(['message' => 'Only admins can generate certificate tokens'], 403);
+        }
+
+        $program = Program::find($programId);
+        if (!$program) {
+            return response()->json(['message' => 'Program not found'], 404);
+        }
+
+        // Check if program is completed and certificate generation is enabled
+        if ($program->program_status !== 'completed') {
+            return response()->json(['message' => 'Program must be completed to generate certificates'], 400);
+        }
+
+        if (!$program->generate_certificates) {
+            return response()->json(['message' => 'Certificate generation is disabled for this program'], 400);
+        }
+
+        try {
+            // Find all attendance records without certificate tokens
+            $applications = ProgramApplication::where('program_id', $programId)
+                ->where('application_status', 'attend')
+                ->whereNull('certificate_token')
+                ->get();
+
+            $updatedCount = 0;
+            $updatedApplications = [];
+
+            foreach ($applications as $application) {
+                $certificateToken = \Illuminate\Support\Str::random(32);
+                $application->update(['certificate_token' => $certificateToken]);
+
+                $updatedCount++;
+                $updatedApplications[] = [
+                    'application_id' => $application->application_program_id,
+                    'student_id' => $application->student_id,
+                    'certificate_token' => $certificateToken,
+                    'updated_at' => $application->updated_at
+                ];
+            }
+
+            return response()->json([
+                'message' => 'Certificate tokens generated successfully',
+                'program_id' => $programId,
+                'program_title' => $program->title,
+                'updated_count' => $updatedCount,
+                'updated_applications' => $updatedApplications
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to generate certificate tokens',
                 'error' => $e->getMessage()
             ], 500);
         }
