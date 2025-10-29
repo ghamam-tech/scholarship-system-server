@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\RequestStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -22,6 +23,7 @@ class Request extends Model
 
     protected $casts = [
         'amount' => 'decimal:2',
+        'current_status' => RequestStatus::class,
     ];
 
     public function student()
@@ -31,6 +33,8 @@ class Request extends Model
 
     public function statusTrails()
     {
-        return $this->hasMany(RequestStatusTrail::class, 'request_id', 'request_id');
+        return $this->hasMany(RequestStatusTrail::class, 'request_id', 'request_id')
+            ->orderByDesc('date')
+            ->orderByDesc('created_at');
     }
 }

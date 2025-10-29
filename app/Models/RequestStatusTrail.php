@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\RequestStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -21,6 +22,7 @@ class RequestStatusTrail extends Model
     ];
 
     protected $casts = [
+        'status' => RequestStatus::class,
         'date' => 'datetime',
     ];
 
