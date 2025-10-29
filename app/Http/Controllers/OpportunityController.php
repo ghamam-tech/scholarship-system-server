@@ -71,8 +71,6 @@ class OpportunityController extends Controller
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'volunteer_role' => ['nullable', 'string', 'max:255'],
             'volunteering_hours' => ['nullable', 'integer', 'min:0'],
-            'enable_qr_attendance' => ['sometimes', 'boolean'],
-            'generate_certificates' => ['sometimes', 'boolean'],
         ]);
 
         try {
@@ -85,14 +83,9 @@ class OpportunityController extends Controller
                 $data['image_file'] = $imagePath;
             }
 
-            // Handle boolean values for JSON - default to true as requested
-            $data['enable_qr_attendance'] = (bool) ($data['enable_qr_attendance'] ?? true);
-            $data['generate_certificates'] = (bool) ($data['generate_certificates'] ?? true);
-
-            // Generate QR URL if QR attendance is enabled
-            if ($data['enable_qr_attendance']) {
-                $data['qr_url'] = $this->generateQRUrl();
-            }
+            // QR attendance and certificate generation are always enabled
+            // Generate QR URL for all opportunities
+            $data['qr_url'] = $this->generateQRUrl();
 
             // Set default opportunity status
             $data['opportunity_status'] = 'active';
@@ -143,8 +136,8 @@ class OpportunityController extends Controller
                 'status' => $opportunity->opportunity_status,
                 'location' => $opportunity->location,
                 'invitations_count' => $opportunity->opportunity_applications_count,
-                'enable_qr_attendance' => $opportunity->enable_qr_attendance,
-                'generate_certificates' => $opportunity->generate_certificates,
+                'enable_qr_attendance' => true,
+                'generate_certificates' => true,
                 'opportunity_coordinatior_name' => $opportunity->opportunity_coordinatior_name,
                 'opportunity_coordinatior_phone' => $opportunity->opportunity_coordinatior_phone,
                 'opportunity_coordinatior_email' => $opportunity->opportunity_coordinatior_email,
@@ -200,25 +193,14 @@ class OpportunityController extends Controller
             'opportunity_status' => ['sometimes', 'in:active,inactive,completed,cancelled'],
             'volunteer_role' => ['sometimes', 'string', 'max:255'],
             'volunteering_hours' => ['sometimes', 'integer', 'min:0'],
-            'enable_qr_attendance' => ['sometimes', 'boolean'],
-            'generate_certificates' => ['sometimes', 'boolean'],
         ]);
 
         try {
             DB::beginTransaction();
 
             // Debug logging
-           Log::info('Update Request Data:', $data);
-           Log::info('Request All Data:', $request->all());
-
-            // Handle boolean values for JSON
-            if (isset($data['enable_qr_attendance'])) {
-                $data['enable_qr_attendance'] = (bool) $data['enable_qr_attendance'];
-            }
-
-            if (isset($data['generate_certificates'])) {
-                $data['generate_certificates'] = (bool) $data['generate_certificates'];
-            }
+            Log::info('Update Request Data:', $data);
+            Log::info('Request All Data:', $request->all());
 
             // Handle opportunity_status updates
             if (isset($data['opportunity_status'])) {
@@ -228,13 +210,13 @@ class OpportunityController extends Controller
                 }
             }
 
-            // Generate QR URL if QR attendance is being enabled
-            if (isset($data['enable_qr_attendance']) && $data['enable_qr_attendance'] && !$opportunity->qr_url) {
+            // Generate QR URL if it doesn't exist (QR attendance is always enabled)
+            if (!$opportunity->qr_url) {
                 $data['qr_url'] = $this->generateQRUrl();
             }
 
             // Debug: Log what data we're about to update
-        Log::debug('Data being sent to update:', $data);
+            Log::debug('Data being sent to update:', $data);
 
             // Update the opportunity
             $opportunity->update($data);
@@ -389,10 +371,7 @@ class OpportunityController extends Controller
             ], 403);
         }
 
-        // Check if QR attendance is enabled
-        if (!$opportunity->enable_qr_attendance) {
-            return response()->json(['message' => 'QR attendance is not enabled for this opportunity'], 400);
-        }
+        // QR attendance is always enabled
 
         // Return opportunity info for QR scan
         return response()->json([
@@ -407,8 +386,8 @@ class OpportunityController extends Controller
                 'category' => $opportunity->category,
                 'opportunity_status' => $opportunity->opportunity_status,
                 'qr_token' => $token,
-                'enable_qr_attendance' => $opportunity->enable_qr_attendance,
-                'generate_certificates' => $opportunity->generate_certificates,
+                'enable_qr_attendance' => true,
+                'generate_certificates' => true,
                 'coordinator_name' => $opportunity->opportunity_coordinatior_name,
                 'coordinator_phone' => $opportunity->opportunity_coordinatior_phone,
                 'coordinator_email' => $opportunity->opportunity_coordinatior_email,
@@ -427,9 +406,9 @@ class OpportunityController extends Controller
     {
         $opportunityArray = $opportunity->toArray();
 
-        // Ensure boolean fields are properly formatted
-        $opportunityArray['enable_qr_attendance'] = (bool) $opportunity->enable_qr_attendance;
-        $opportunityArray['generate_certificates'] = (bool) $opportunity->generate_certificates;
+        // QR attendance and certificate generation are always enabled
+        $opportunityArray['enable_qr_attendance'] = true;
+        $opportunityArray['generate_certificates'] = true;
 
         // Add image URL if image exists
         if ($opportunity->image_file) {
@@ -439,4 +418,3 @@ class OpportunityController extends Controller
         return $opportunityArray;
     }
 }
-

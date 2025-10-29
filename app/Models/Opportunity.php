@@ -26,8 +26,6 @@ class Opportunity extends Model
         'opportunity_status',
         'start_date',
         'end_date',
-        'enable_qr_attendance',
-        'generate_certificates',
         'volunteer_role',
         'volunteering_hours'
     ];
@@ -36,8 +34,6 @@ class Opportunity extends Model
         'date' => 'date',
         'start_date' => 'date',
         'end_date' => 'date',
-        'enable_qr_attendance' => 'boolean',
-        'generate_certificates' => 'boolean',
     ];
 
     /**
@@ -52,19 +48,19 @@ class Opportunity extends Model
     }
 
     /**
-     * Ensure enable_qr_attendance is always returned as boolean
+     * QR attendance is always enabled
      */
     public function getEnableQrAttendanceAttribute($value)
     {
-        return (bool) $value;
+        return true;
     }
 
     /**
-     * Ensure generate_certificates is always returned as boolean
+     * Certificate generation is always enabled
      */
     public function getGenerateCertificatesAttribute($value)
     {
-        return (bool) $value;
+        return true;
     }
 
     /**
@@ -85,4 +81,3 @@ class Opportunity extends Model
             ->withTimestamps();
     }
 }
-

@@ -32,9 +32,7 @@ return new class extends Migration
             $table->string('opportunity_coordinatior_phone')->nullable(); // Note: keeping original spelling as in ERD
             $table->string('opportunity_coordinatior_email')->nullable();
 
-            // Opportunity Features - Default to true as requested
-            $table->boolean('enable_qr_attendance')->default(true);
-            $table->boolean('generate_certificates')->default(true);
+            // QR attendance and certificate generation are always enabled
 
             // Opportunity Status and Dates
             $table->enum('opportunity_status', ['active', 'inactive', 'completed', 'cancelled'])->default('active');
@@ -57,4 +55,3 @@ return new class extends Migration
         Schema::dropIfExists('opportunities');
     }
 };
-

@@ -1,5 +1,6 @@
 <?php
 use App\Http\Controllers\ApprovedApplicantApplicationController;
+use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/applicant/application/scholarship-response', [ApprovedApplicantApplicationController::class, 'respondToScholarship']);
