@@ -13,14 +13,14 @@ use App\Http\Controllers\AppointmentController;
 |
 */
 
-// Applicant routes - require authentication and first_approval status
-Route::middleware(['auth:sanctum', 'role:applicant'])->group(function () {
-    // Get available appointments (only for applicants with first_approval status)
+// Shared routes for applicants and students
+Route::middleware(['auth:sanctum', 'role:applicant,student'])->group(function () {
     Route::get('appointments/available', [AppointmentController::class, 'getAvailableAppointments']);
-
-    // Book an appointment
     Route::post('appointments/{appointment}/book', [AppointmentController::class, 'bookAppointment']);
+});
 
+// Applicant-only routes - require authentication and first_approval status
+Route::middleware(['auth:sanctum', 'role:applicant'])->group(function () {
     // Get my booked appointment
     Route::get('appointments/my-appointment', [AppointmentController::class, 'getMyAppointment']);
 
