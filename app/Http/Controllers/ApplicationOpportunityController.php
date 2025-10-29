@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ProgramApplication;
-use App\Models\Program;
+use App\Models\ApplicationOpportunity;
+use App\Models\Opportunity;
 use App\Models\Student;
 use App\Enums\UserRole;
 use Illuminate\Http\Request;
@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Hash;
 
-class ProgramApplicationController extends Controller
+class ApplicationOpportunityController extends Controller
 {
 
     /**
@@ -46,9 +46,9 @@ class ProgramApplicationController extends Controller
     }
 
     /**
-     * Admin: Invite multiple students to program
+     * Admin: Invite multiple students to opportunity
      */
-    public function inviteMultipleStudents(Request $request, Program $program)
+    public function inviteMultipleStudents(Request $request, $opportunityId)
     {
         $user = $request->user();
 
@@ -78,6 +78,11 @@ class ProgramApplicationController extends Controller
             ], 422);
         }
 
+        $opportunity = Opportunity::find($opportunityId);
+        if (!$opportunity) {
+            return response()->json(['message' => 'Opportunity not found'], 404);
+        }
+
         try {
             DB::beginTransaction();
 
@@ -86,8 +91,8 @@ class ProgramApplicationController extends Controller
 
             foreach ($data['student_ids'] as $studentId) {
                 // Check if invitation already exists
-                $existingApplication = ProgramApplication::where('student_id', $studentId)
-                    ->where('program_id', $program->program_id)
+                $existingApplication = ApplicationOpportunity::where('student_id', $studentId)
+                    ->where('opportunity_id', $opportunityId)
                     ->first();
 
                 if ($existingApplication) {
@@ -95,20 +100,20 @@ class ProgramApplicationController extends Controller
                     continue;
                 }
 
-                $application = ProgramApplication::create([
+                $application = ApplicationOpportunity::create([
                     'student_id' => $studentId,
-                    'program_id' => $program->program_id,
+                    'opportunity_id' => $opportunityId,
                     'application_status' => 'invite'
                 ]);
 
-                $invitedApplications[] = $application->load(['student.user', 'program']);
+                $invitedApplications[] = $application->load(['student.user', 'opportunity']);
             }
 
             DB::commit();
 
-            // Get all existing applications for this program
-            $allExistingApplications = ProgramApplication::with(['student.user', 'student.applicant'])
-                ->where('program_id', $program->program_id)
+            // Get all existing applications for this opportunity
+            $allExistingApplications = ApplicationOpportunity::with(['student.user', 'student.applicant'])
+                ->where('opportunity_id', $opportunityId)
                 ->get();
 
             return response()->json([
@@ -117,7 +122,7 @@ class ProgramApplicationController extends Controller
                 'already_invited_count' => count($alreadyInvited),
                 'applications' => collect($invitedApplications)->map(function ($application) {
                     return [
-                        'application_program_id' => $application->formatted_id,
+                        'application_opportunity_id' => $application->formatted_id,
                         'student_id' => $application->student_id,
                         'ar_name' => $application->student?->applicant?->ar_name ?? 'N/A',
                         'email' => $application->student?->user?->email ?? 'N/A',
@@ -126,16 +131,16 @@ class ProgramApplicationController extends Controller
                 }),
                 'already_invited_student_ids' => collect($alreadyInvited)->map(function ($application) {
                     return [
-                        'application_program_id' => $application->formatted_id,
+                        'application_opportunity_id' => $application->formatted_id,
                         'student_id' => $application->student_id,
                         'ar_name' => $application->student?->applicant?->ar_name ?? 'N/A',
                         'email' => $application->student?->user?->email ?? 'N/A',
                         'status' => $application->application_status,
                     ];
                 }),
-                'all_program_applications' => $allExistingApplications->map(function ($application) {
+                'all_opportunity_applications' => $allExistingApplications->map(function ($application) {
                     return [
-                        'application_program_id' => $application->formatted_id,
+                        'application_opportunity_id' => $application->formatted_id,
                         'student_id' => $application->student_id,
                         'ar_name' => $application->student?->applicant?->ar_name ?? 'N/A',
                         'email' => $application->student?->user?->email ?? 'N/A',
@@ -155,7 +160,7 @@ class ProgramApplicationController extends Controller
     /**
      * Student: Accept invitation
      */
-    public function acceptInvitation(Request $request, ProgramApplication $application)
+    public function acceptInvitation(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -164,8 +169,11 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Only students can accept invitations'], 403);
         }
 
-        // Load the relationships
-        $application->load(['student.user', 'program']);
+        $application = ApplicationOpportunity::with(['student.user', 'opportunity'])->find($applicationId);
+
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
 
         // Check if the student owns this application
         if ($application->student->user_id !== $user->user_id) {
@@ -183,14 +191,15 @@ class ProgramApplicationController extends Controller
             return response()->json([
                 'message' => 'Invitation accepted successfully',
                 'application' => [
-                    'application_program_id' => $application->formatted_id,
+                    'application_opportunity_id' => $application->formatted_id,
                     'application_status' => $application->application_status,
                     'certificate_token' => $application->certificate_token,
                     'comment' => $application->comment,
                     'excuse_reason' => $application->excuse_reason,
                     'excuse_file' => $application->excuse_file,
+                    'attendece_mark' => $application->attendece_mark,
                     'student_id' => $application->student_id,
-                    'program_id' => $application->program_id,
+                    'opportunity_id' => $application->opportunity_id,
                     'created_at' => $application->created_at,
                     'updated_at' => $application->updated_at
                 ]
@@ -206,7 +215,7 @@ class ProgramApplicationController extends Controller
     /**
      * Student: Reject invitation with excuse
      */
-    public function rejectInvitation(Request $request, ProgramApplication $application)
+    public function rejectInvitation(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -227,8 +236,11 @@ class ProgramApplicationController extends Controller
             'excuse_file' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:5120'],
         ]);
 
-        // Load the relationships
-        $application->load(['student.user', 'program']);
+        $application = ApplicationOpportunity::with(['student.user', 'opportunity'])->find($applicationId);
+
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
 
         // Check if the student owns this application
         if ($application->student->user_id !== $user->user_id) {
@@ -251,7 +263,7 @@ class ProgramApplicationController extends Controller
             // Handle excuse file upload
             if ($request->hasFile('excuse_file')) {
                 $excuseFile = $request->file('excuse_file');
-                $excusePath = $excuseFile->store('program_applications/excuses', 'public');
+                $excusePath = $excuseFile->store('opportunity_applications/excuses', 'public');
                 $updateData['excuse_file'] = $excusePath;
             }
 
@@ -262,14 +274,15 @@ class ProgramApplicationController extends Controller
             return response()->json([
                 'message' => 'Invitation rejected with excuse',
                 'application' => [
-                    'application_program_id' => $application->formatted_id,
+                    'application_opportunity_id' => $application->formatted_id,
                     'application_status' => $application->application_status,
                     'certificate_token' => $application->certificate_token,
                     'comment' => $application->comment,
                     'excuse_reason' => $application->excuse_reason,
                     'excuse_file' => $application->excuse_file,
+                    'attendece_mark' => $application->attendece_mark,
                     'student_id' => $application->student_id,
-                    'program_id' => $application->program_id,
+                    'opportunity_id' => $application->opportunity_id,
                     'created_at' => $application->created_at,
                     'updated_at' => $application->updated_at
                 ]
@@ -286,7 +299,7 @@ class ProgramApplicationController extends Controller
     /**
      * Admin: Approve student excuse
      */
-    public function approveExcuse(Request $request, ProgramApplication $application)
+    public function approveExcuse(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -295,8 +308,11 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Only admins can approve excuses'], 403);
         }
 
-        // Load the relationships
-        $application->load(['student.user', 'program']);
+        $application = ApplicationOpportunity::with(['student.user', 'opportunity'])->find($applicationId);
+
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
 
         // Check if application is in excuse status
         if ($application->application_status !== 'excuse') {
@@ -309,14 +325,15 @@ class ProgramApplicationController extends Controller
             return response()->json([
                 'message' => 'Excuse approved successfully',
                 'application' => [
-                    'application_program_id' => $application->formatted_id,
+                    'application_opportunity_id' => $application->formatted_id,
                     'application_status' => $application->application_status,
                     'certificate_token' => $application->certificate_token,
                     'comment' => $application->comment,
                     'excuse_reason' => $application->excuse_reason,
                     'excuse_file' => $application->excuse_file,
+                    'attendece_mark' => $application->attendece_mark,
                     'student_id' => $application->student_id,
-                    'program_id' => $application->program_id,
+                    'opportunity_id' => $application->opportunity_id,
                     'created_at' => $application->created_at,
                     'updated_at' => $application->updated_at
                 ]
@@ -332,7 +349,7 @@ class ProgramApplicationController extends Controller
     /**
      * Admin: Reject student excuse
      */
-    public function rejectExcuse(Request $request, ProgramApplication $application)
+    public function rejectExcuse(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -341,8 +358,11 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Only admins can reject excuses'], 403);
         }
 
-        // Load the relationships
-        $application->load(['student.user', 'program']);
+        $application = ApplicationOpportunity::with(['student.user', 'opportunity'])->find($applicationId);
+
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
 
         // Check if application is in excuse status
         if ($application->application_status !== 'excuse') {
@@ -355,14 +375,15 @@ class ProgramApplicationController extends Controller
             return response()->json([
                 'message' => 'Excuse rejected successfully',
                 'application' => [
-                    'application_program_id' => $application->formatted_id,
+                    'application_opportunity_id' => $application->formatted_id,
                     'application_status' => $application->application_status,
                     'certificate_token' => $application->certificate_token,
                     'comment' => $application->comment,
                     'excuse_reason' => $application->excuse_reason,
                     'excuse_file' => $application->excuse_file,
+                    'attendece_mark' => $application->attendece_mark,
                     'student_id' => $application->student_id,
-                    'program_id' => $application->program_id,
+                    'opportunity_id' => $application->opportunity_id,
                     'created_at' => $application->created_at,
                     'updated_at' => $application->updated_at
                 ]
@@ -378,7 +399,7 @@ class ProgramApplicationController extends Controller
     /**
      * Student: QR Code attendance
      */
-    public function qrAttendance(Request $request, ProgramApplication $application)
+    public function qrAttendance(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -392,8 +413,11 @@ class ProgramApplicationController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        // Load the relationships
-        $application->load(['student.user', 'program']);
+        $application = ApplicationOpportunity::with(['student.user', 'opportunity'])->find($applicationId);
+
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
 
         // Check if the student owns this application
         if ($application->student->user_id !== $user->user_id) {
@@ -411,9 +435,9 @@ class ProgramApplicationController extends Controller
         }
 
         try {
-            // Generate certificate token if program is completed and generate_certificates is enabled
+            // Generate certificate token if opportunity is completed and generate_certificates is enabled
             $certificateToken = null;
-            if ($application->program->program_status === 'completed' && $application->program->generate_certificates) {
+            if ($application->opportunity->opportunity_status === 'completed' && $application->opportunity->generate_certificates) {
                 $certificateToken = \Illuminate\Support\Str::random(32);
             }
 
@@ -428,14 +452,15 @@ class ProgramApplicationController extends Controller
             $responseData = [
                 'message' => 'Attendance marked successfully',
                 'application' => [
-                    'application_program_id' => $application->formatted_id,
+                    'application_opportunity_id' => $application->formatted_id,
                     'application_status' => $application->application_status,
                     'certificate_token' => $application->certificate_token,
                     'comment' => $application->comment,
                     'excuse_reason' => $application->excuse_reason,
                     'excuse_file' => $application->excuse_file,
+                    'attendece_mark' => $application->attendece_mark,
                     'student_id' => $application->student_id,
-                    'program_id' => $application->program_id,
+                    'opportunity_id' => $application->opportunity_id,
                     'created_at' => $application->created_at,
                     'updated_at' => $application->updated_at
                 ]
@@ -457,26 +482,31 @@ class ProgramApplicationController extends Controller
     }
 
     /**
-     * Admin: Get all program applications
+     * Admin: Get all opportunity applications
      */
-    public function getProgramApplications(Request $request, Program $program)
+    public function getOpportunityApplications(Request $request, $opportunityId)
     {
         $user = $request->user();
 
         // Check if user is admin
         if (!$user || $user->role->value !== UserRole::ADMIN->value) {
-            return response()->json(['message' => 'Only admins can view program applications'], 403);
+            return response()->json(['message' => 'Only admins can view opportunity applications'], 403);
         }
 
-        $applications = ProgramApplication::with(['student.user', 'student.applicant', 'student.approvedApplication.scholarship', 'student.approvedApplication.application'])
-            ->where('program_id', $program->program_id)
+        $opportunity = Opportunity::find($opportunityId);
+        if (!$opportunity) {
+            return response()->json(['message' => 'Opportunity not found'], 404);
+        }
+
+        $applications = ApplicationOpportunity::with(['student.user', 'student.applicant', 'student.approvedApplication.scholarship', 'student.approvedApplication.application'])
+            ->where('opportunity_id', $opportunityId)
             ->whereHas('student') // Only get applications with valid students
             ->get();
 
         return response()->json([
-            'program' => [
-                'program_id' => $program->program_id,
-                'title' => $program->title
+            'opportunity' => [
+                'opportunity_id' => $opportunity->opportunity_id,
+                'title' => $opportunity->title
             ],
             'applications' => $applications->map(function ($application) {
                 return [
@@ -493,9 +523,9 @@ class ProgramApplicationController extends Controller
     }
 
     /**
-     * Admin: Delete program application
+     * Admin: Delete opportunity application
      */
-    public function deleteApplication(Request $request, ProgramApplication $application)
+    public function deleteApplication(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -504,8 +534,12 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Only admins can delete applications'], 403);
         }
 
-        // Load the relationships
-        $application->load(['student.user', 'student.applicant', 'program']);
+        $application = ApplicationOpportunity::with(['student.user', 'student.applicant', 'opportunity'])
+            ->find($applicationId);
+
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
 
         try {
             // Delete excuse file if exists
@@ -518,11 +552,11 @@ class ProgramApplicationController extends Controller
             return response()->json([
                 'message' => 'Application deleted successfully',
                 'deleted_application' => [
-                    'application_program_id' => $application->formatted_id,
+                    'application_opportunity_id' => $applicationId,
                     'student_id' => $application->student_id,
                     'ar_name' => $application->student->applicant->ar_name ?? 'N/A',
                     'email' => $application->student->user->email,
-                    'program_title' => $application->program->title,
+                    'opportunity_title' => $application->opportunity->title,
                 ]
             ]);
         } catch (\Exception $e) {
@@ -536,7 +570,7 @@ class ProgramApplicationController extends Controller
     /**
      * Admin: Get excuse details for an application
      */
-    public function getExcuseDetails(Request $request, ProgramApplication $application)
+    public function getExcuseDetails(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -545,8 +579,12 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Only admins can view excuse details'], 403);
         }
 
-        // Load the relationships
-        $application->load(['student.user', 'student.applicant', 'program']);
+        $application = ApplicationOpportunity::with(['student.user', 'student.applicant', 'opportunity'])
+            ->find($applicationId);
+
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
 
         // Check if application has excuse
         if ($application->application_status !== 'excuse') {
@@ -562,14 +600,14 @@ class ProgramApplicationController extends Controller
                 'email' => $application->student->user->email,
                 'ar_name' => $application->student->applicant->ar_name,
                 'status' => $application->application_status,
-                'program_title' => $application->program->title,
+                'opportunity_title' => $application->opportunity->title,
                 'submitted_at' => $application->updated_at
             ]
         ]);
     }
 
     /**
-     * Student: Get my program applications
+     * Student: Get my opportunity applications
      */
     public function getMyApplications(Request $request)
     {
@@ -585,39 +623,40 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Student profile not found'], 404);
         }
 
-        $applications = ProgramApplication::with(['program'])
+        $applications = ApplicationOpportunity::with(['opportunity'])
             ->where('student_id', $student->student_id)
             ->get();
 
         return response()->json([
             'applications' => $applications->map(function ($application) {
                 return [
-                    'application_program_id' => $application->formatted_id,
+                    'application_opportunity_id' => $application->formatted_id,
                     'application_status' => $application->application_status,
                     'certificate_token' => $application->certificate_token,
                     'comment' => $application->comment,
                     'excuse_reason' => $application->excuse_reason,
                     'excuse_file' => $application->excuse_file,
+                    'attendece_mark' => $application->attendece_mark,
                     'student_id' => $application->student_id,
-                    'program_id' => $application->program_id,
+                    'opportunity_id' => $application->opportunity_id,
                     'created_at' => $application->created_at,
                     'updated_at' => $application->updated_at,
-                    'program' => $application->program
+                    'opportunity' => $application->opportunity
                 ];
             })
         ]);
     }
 
     /**
-     * Student: Get all programs that the student has applications for
+     * Student: Get all opportunities that the student has applications for
      */
-    public function getProgramsForStudent(Request $request)
+    public function getOpportunitiesForStudent(Request $request)
     {
         $user = $request->user();
 
         // Check if user is student
         if (!$user || $user->role->value !== UserRole::STUDENT->value) {
-            return response()->json(['message' => 'Only students can view their programs'], 403);
+            return response()->json(['message' => 'Only students can view their opportunities'], 403);
         }
 
         $student = Student::where('user_id', $user->user_id)->first();
@@ -625,46 +664,42 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Student profile not found'], 404);
         }
 
-        $applications = ProgramApplication::with(['program'])
+        $applications = ApplicationOpportunity::with(['opportunity'])
             ->where('student_id', $student->student_id)
             ->get();
 
-        $programs = $applications->map(function ($application) {
-            // Get enrollment count for this program
-            $enrollmentCount = ProgramApplication::where('program_id', $application->program->program_id)
+        $opportunities = $applications->map(function ($application) {
+            // Get enrollment count for this opportunity
+            $enrollmentCount = ApplicationOpportunity::where('opportunity_id', $application->opportunity->opportunity_id)
                 ->where('application_status', 'accepted')
                 ->count();
 
-            // Get total applications for this program
-            $totalApplications = ProgramApplication::where('program_id', $application->program->program_id)->count();
+            // Get total applications for this opportunity
+            $totalApplications = ApplicationOpportunity::where('opportunity_id', $application->opportunity->opportunity_id)->count();
 
             return [
-                'program_id' => $application->program->program_id,
-                'title' => $application->program->title,
-                'description' => $application->program->discription,
-                'date' => $application->program->date,
-                'location' => $application->program->location,
-                'country' => $application->program->country,
-                'category' => $application->program->category,
-                'program_status' => $application->program->program_status,
-                'start_date' => $application->program->start_date,
-                'end_date' => $application->program->end_date,
+                'opportunity_id' => $application->opportunity->opportunity_id,
+                'title' => $application->opportunity->title,
+                'description' => $application->opportunity->discription,
+                'date' => $application->opportunity->date,
+                'location' => $application->opportunity->location,
+                'country' => $application->opportunity->country,
+                'category' => $application->opportunity->category,
+                'opportunity_status' => $application->opportunity->opportunity_status,
+                'start_date' => $application->opportunity->start_date,
+                'end_date' => $application->opportunity->end_date,
+                'volunteer_role' => $application->opportunity->volunteer_role,
+                'volunteering_hours' => $application->opportunity->volunteering_hours,
 
-
-                // Program image and QR
-                'image_file' => $application->program->image_file,
-                'image_url' => $application->program->image_file ? asset('storage/' . $application->program->image_file) : null,
-
-
+                // Opportunity image and QR
+                'image_file' => $application->opportunity->image_file,
+                'image_url' => $application->opportunity->image_file ? asset('storage/' . $application->opportunity->image_file) : null,
 
                 'enrollment_text' => $enrollmentCount . ' enrolled',
 
                 // Application details
                 'application_status' => $application->application_status,
                 'application_id' => $application->formatted_id,
-
-
-
             ];
         });
 
@@ -674,15 +709,15 @@ class ProgramApplicationController extends Controller
                 'name' => $student->applicant?->ar_name ?? $student->applicant?->en_name ?? 'N/A',
                 'email' => $user->email,
             ],
-            'programs' => $programs,
-            'total_programs' => $programs->count()
+            'opportunities' => $opportunities,
+            'total_opportunities' => $opportunities->count()
         ]);
     }
 
     /**
-     * Get program by ID
+     * Get opportunity by ID
      */
-    public function getProgramById(Request $request, Program $program)
+    public function getOpportunityById(Request $request, $opportunityId)
     {
         $user = $request->user();
 
@@ -691,43 +726,50 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Authentication required'], 401);
         }
 
-        // Get enrollment count for this program
-        $enrollmentCount = ProgramApplication::where('program_id', $program->program_id)
+        $opportunity = Opportunity::find($opportunityId);
+        if (!$opportunity) {
+            return response()->json(['message' => 'Opportunity not found'], 404);
+        }
+
+        // Get enrollment count for this opportunity
+        $enrollmentCount = ApplicationOpportunity::where('opportunity_id', $opportunityId)
             ->where('application_status', 'accepted')
             ->count();
 
-        // Get total applications for this program
-        $totalApplications = ProgramApplication::where('program_id', $program->program_id)->count();
+        // Get total applications for this opportunity
+        $totalApplications = ApplicationOpportunity::where('opportunity_id', $opportunityId)->count();
 
-        // Get program coordinator details
+        // Get opportunity coordinator details
         $coordinator = [
-            'name' => $program->program_coordinatior_name,
-            'phone' => $program->program_coordinatior_phone,
-            'email' => $program->program_coordinatior_email,
+            'name' => $opportunity->opportunity_coordinatior_name,
+            'phone' => $opportunity->opportunity_coordinatior_phone,
+            'email' => $opportunity->opportunity_coordinatior_email,
         ];
 
         return response()->json([
-            'program' => [
-                'program_id' => $program->program_id,
-                'title' => $program->title,
-                'description' => $program->discription,
-                'date' => $program->date,
-                'location' => $program->location,
-                'country' => $program->country,
-                'category' => $program->category,
-                'program_status' => $program->program_status,
-                'start_date' => $program->start_date,
-                'end_date' => $program->end_date,
-                'enable_qr_attendance' => $program->enable_qr_attendance,
-                'generate_certificates' => $program->generate_certificates,
+            'opportunity' => [
+                'opportunity_id' => $opportunity->opportunity_id,
+                'title' => $opportunity->title,
+                'description' => $opportunity->discription,
+                'date' => $opportunity->date,
+                'location' => $opportunity->location,
+                'country' => $opportunity->country,
+                'category' => $opportunity->category,
+                'opportunity_status' => $opportunity->opportunity_status,
+                'start_date' => $opportunity->start_date,
+                'end_date' => $opportunity->end_date,
+                'volunteer_role' => $opportunity->volunteer_role,
+                'volunteering_hours' => $opportunity->volunteering_hours,
+                'enable_qr_attendance' => $opportunity->enable_qr_attendance,
+                'generate_certificates' => $opportunity->generate_certificates,
 
-                // Program coordinator details
+                // Opportunity coordinator details
                 'coordinator' => $coordinator,
 
-                // Program image and QR
-                'image_file' => $program->image_file,
-                'image_url' => $program->image_file ? asset('storage/' . $program->image_file) : null,
-                'qr_url' => $program->qr_url,
+                // Opportunity image and QR
+                'image_file' => $opportunity->image_file,
+                'image_url' => $opportunity->image_file ? asset('storage/' . $opportunity->image_file) : null,
+                'qr_url' => $opportunity->qr_url,
 
                 // Enrollment and application statistics
                 'enrollment_count' => $enrollmentCount,
@@ -735,22 +777,22 @@ class ProgramApplicationController extends Controller
                 'enrollment_text' => $enrollmentCount . ' enrolled',
 
                 // Timestamps
-                'created_at' => $program->created_at,
-                'updated_at' => $program->updated_at,
+                'created_at' => $opportunity->created_at,
+                'updated_at' => $opportunity->updated_at,
             ]
         ]);
     }
 
     /**
-     * Get student's program application by Program ID
+     * Get student's opportunity application by Opportunity ID
      */
-    public function getMyProgramApplication(Request $request, Program $program)
+    public function getMyOpportunityApplication(Request $request, $opportunityId)
     {
         $user = $request->user();
 
         // Check if user is student
         if (!$user || $user->role->value !== UserRole::STUDENT->value) {
-            return response()->json(['message' => 'Only students can view their program applications'], 403);
+            return response()->json(['message' => 'Only students can view their opportunity applications'], 403);
         }
 
         // Find the student record for this user
@@ -759,27 +801,28 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Student profile not found'], 404);
         }
 
-        // Find the application for this student and program
-        $application = ProgramApplication::with(['student.user', 'student.applicant', 'program', 'student.approvedApplication.scholarship'])
-            ->where('program_id', $program->program_id)
+        // Find the application for this student and opportunity
+        $application = ApplicationOpportunity::with(['student.user', 'student.applicant', 'opportunity', 'student.approvedApplication.scholarship'])
+            ->where('opportunity_id', $opportunityId)
             ->where('student_id', $student->student_id)
             ->first();
 
         if (!$application) {
-            return response()->json(['message' => 'No application found for this program'], 404);
+            return response()->json(['message' => 'No application found for this opportunity'], 404);
         }
 
         return response()->json([
             'application' => [
                 'application_id' => $application->formatted_id,
                 'student_id' => $application->student_id,
-                'program_id' => $application->program_id,
+                'opportunity_id' => $application->opportunity_id,
                 'application_status' => $application->application_status,
                 'excuse_reason' => $application->excuse_reason,
                 'excuse_file' => $application->excuse_file,
                 'excuse_file_url' => $application->excuse_file ? asset('storage/' . $application->excuse_file) : null,
                 'certificate_token' => $application->certificate_token,
                 'comment' => $application->comment,
+                'attendece_mark' => $application->attendece_mark,
                 'created_at' => $application->created_at,
                 'updated_at' => $application->updated_at,
 
@@ -792,26 +835,28 @@ class ProgramApplicationController extends Controller
                     'scholarship_name' => $application->student->approvedApplication?->scholarship?->scholarship_name ?? 'N/A',
                 ],
 
-                // Program details
-                'program' => [
-                    'program_id' => $application->program->program_id,
-                    'title' => $application->program->title,
-                    'description' => $application->program->discription,
-                    'date' => $application->program->date,
-                    'location' => $application->program->location,
-                    'country' => $application->program->country,
-                    'category' => $application->program->category,
-                    'program_status' => $application->program->program_status,
-                    'start_date' => $application->program->start_date,
-                    'end_date' => $application->program->end_date,
-                    'enable_qr_attendance' => $application->program->enable_qr_attendance,
-                    'generate_certificates' => $application->program->generate_certificates,
-                    'coordinator_name' => $application->program->program_coordinatior_name,
-                    'coordinator_phone' => $application->program->program_coordinatior_phone,
-                    'coordinator_email' => $application->program->program_coordinatior_email,
-                    'image_file' => $application->program->image_file,
-                    'image_url' => $application->program->image_file ? asset('storage/' . $application->program->image_file) : null,
-                    'qr_url' => $application->program->qr_url,
+                // Opportunity details
+                'opportunity' => [
+                    'opportunity_id' => $application->opportunity->opportunity_id,
+                    'title' => $application->opportunity->title,
+                    'description' => $application->opportunity->discription,
+                    'date' => $application->opportunity->date,
+                    'location' => $application->opportunity->location,
+                    'country' => $application->opportunity->country,
+                    'category' => $application->opportunity->category,
+                    'opportunity_status' => $application->opportunity->opportunity_status,
+                    'start_date' => $application->opportunity->start_date,
+                    'end_date' => $application->opportunity->end_date,
+                    'volunteer_role' => $application->opportunity->volunteer_role,
+                    'volunteering_hours' => $application->opportunity->volunteering_hours,
+                    'enable_qr_attendance' => $application->opportunity->enable_qr_attendance,
+                    'generate_certificates' => $application->opportunity->generate_certificates,
+                    'coordinator_name' => $application->opportunity->opportunity_coordinatior_name,
+                    'coordinator_phone' => $application->opportunity->opportunity_coordinatior_phone,
+                    'coordinator_email' => $application->opportunity->opportunity_coordinatior_email,
+                    'image_file' => $application->opportunity->image_file,
+                    'image_url' => $application->opportunity->image_file ? asset('storage/' . $application->opportunity->image_file) : null,
+                    'qr_url' => $application->opportunity->qr_url,
                 ]
             ]
         ]);
@@ -833,26 +878,26 @@ class ProgramApplicationController extends Controller
             'student_id' => ['required', 'integer', 'exists:students,student_id'],
         ]);
 
-        // Find program by QR token
-        $program = Program::where('qr_url', $token)->first();
+        // Find opportunity by QR token
+        $opportunity = Opportunity::where('qr_url', $token)->first();
 
-        if (!$program) {
+        if (!$opportunity) {
             return response()->json(['message' => 'Invalid QR code'], 404);
         }
 
-        // Check if program is active
-        if ($program->program_status !== 'active') {
+        // Check if opportunity is active
+        if ($opportunity->opportunity_status !== 'active') {
             return response()->json([
                 'message' => 'QR attendance is not available',
-                'reason' => 'Program is not active',
-                'program_status' => $program->program_status,
-                'available_when' => 'Program status is "active"'
+                'reason' => 'Opportunity is not active',
+                'opportunity_status' => $opportunity->opportunity_status,
+                'available_when' => 'Opportunity status is "active"'
             ], 403);
         }
 
         // Check if QR attendance is enabled
-        if (!$program->enable_qr_attendance) {
-            return response()->json(['message' => 'QR attendance is not enabled for this program'], 400);
+        if (!$opportunity->enable_qr_attendance) {
+            return response()->json(['message' => 'QR attendance is not enabled for this opportunity'], 400);
         }
 
         // Find student record
@@ -867,13 +912,13 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Unauthorized access to this student record'], 403);
         }
 
-        // Find application for this student and program
-        $application = ProgramApplication::where('student_id', $student->student_id)
-            ->where('program_id', $program->program_id)
+        // Find application for this student and opportunity
+        $application = ApplicationOpportunity::where('student_id', $student->student_id)
+            ->where('opportunity_id', $opportunity->opportunity_id)
             ->first();
 
         if (!$application) {
-            return response()->json(['message' => 'No invitation found for this program'], 404);
+            return response()->json(['message' => 'No invitation found for this opportunity'], 404);
         }
 
         // Check if application is in accepted status
@@ -882,9 +927,9 @@ class ProgramApplicationController extends Controller
         }
 
         try {
-            // Generate certificate token if program is completed and generate_certificates is enabled
+            // Generate certificate token if opportunity is completed and generate_certificates is enabled
             $certificateToken = null;
-            if ($application->program->program_status === 'completed' && $application->program->generate_certificates) {
+            if ($application->opportunity->opportunity_status === 'completed' && $application->opportunity->generate_certificates) {
                 $certificateToken = \Illuminate\Support\Str::random(32);
             }
 
@@ -899,17 +944,18 @@ class ProgramApplicationController extends Controller
             $responseData = [
                 'message' => 'Attendance marked successfully',
                 'application' => [
-                    'application_program_id' => $application->formatted_id,
+                    'application_opportunity_id' => $application->formatted_id,
                     'application_status' => $application->application_status,
                     'certificate_token' => $application->certificate_token,
                     'comment' => $application->comment,
                     'excuse_reason' => $application->excuse_reason,
                     'excuse_file' => $application->excuse_file,
+                    'attendece_mark' => $application->attendece_mark,
                     'student_id' => $application->student_id,
-                    'program_id' => $application->program_id,
+                    'opportunity_id' => $application->opportunity_id,
                     'created_at' => $application->created_at,
                     'updated_at' => $application->updated_at
-                ]->load(['student.user', 'program']),
+                ]->load(['student.user', 'opportunity']),
                 'student' => [
                     'student_id' => $student->student_id,
                     'name' => $student->en_name ?? $student->ar_name,
@@ -934,8 +980,8 @@ class ProgramApplicationController extends Controller
 
     /**
      * Student: Mark attendance via QR token (requires student authentication)
-     * Only students invited to the program can mark attendance
-     * Only works when program status is "active"
+     * Only students invited to the opportunity can mark attendance
+     * Only works when opportunity status is "active"
      */
     public function markAttendanceViaQR(Request $request, $token)
     {
@@ -953,35 +999,35 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Student profile not found'], 404);
         }
 
-        // Find program by QR token
-        $program = Program::where('qr_url', $token)->first();
+        // Find opportunity by QR token
+        $opportunity = Opportunity::where('qr_url', $token)->first();
 
-        if (!$program) {
+        if (!$opportunity) {
             return response()->json(['message' => 'Invalid QR code'], 404);
         }
 
-        // Check if program is active
-        if ($program->program_status !== 'active') {
+        // Check if opportunity is active
+        if ($opportunity->opportunity_status !== 'active') {
             return response()->json([
                 'message' => 'QR attendance is not available',
-                'reason' => 'Program is not active',
-                'program_status' => $program->program_status,
-                'available_when' => 'Program status is "active"'
+                'reason' => 'Opportunity is not active',
+                'opportunity_status' => $opportunity->opportunity_status,
+                'available_when' => 'Opportunity status is "active"'
             ], 403);
         }
 
         // Check if QR attendance is enabled
-        if (!$program->enable_qr_attendance) {
-            return response()->json(['message' => 'QR attendance is not enabled for this program'], 400);
+        if (!$opportunity->enable_qr_attendance) {
+            return response()->json(['message' => 'QR attendance is not enabled for this opportunity'], 400);
         }
 
-        // Find application for this student and program
-        $application = ProgramApplication::where('student_id', $student->student_id)
-            ->where('program_id', $program->program_id)
+        // Find application for this student and opportunity
+        $application = ApplicationOpportunity::where('student_id', $student->student_id)
+            ->where('opportunity_id', $opportunity->opportunity_id)
             ->first();
 
         if (!$application) {
-            return response()->json(['message' => 'You are not invited to this program'], 404);
+            return response()->json(['message' => 'You are not invited to this opportunity'], 404);
         }
 
         // Check if application is in accepted or attend status
@@ -992,11 +1038,12 @@ class ProgramApplicationController extends Controller
         // Prepare response data
         $responseData = [
             'success' => true,
-            'program' => [
-                'program_id' => $program->program_id,
-                'title' => $program->title,
-                'date' => $program->date,
-                'location' => $program->location,
+            'opportunity' => [
+                'opportunity_id' => $opportunity->opportunity_id,
+                'title' => $opportunity->title,
+                'date' => $opportunity->date,
+                'location' => $opportunity->location,
+                'volunteer_role' => $opportunity->volunteer_role,
             ],
             'student' => [
                 'student_id' => $student->student_id,
@@ -1015,7 +1062,7 @@ class ProgramApplicationController extends Controller
             $responseData['message'] = 'Attendance already marked';
 
             // Check if certificate token exists or should be generated
-            if ($program->program_status === 'completed' && $program->generate_certificates) {
+            if ($opportunity->opportunity_status === 'completed' && $opportunity->generate_certificates) {
                 if (!$application->certificate_token) {
                     // Generate certificate token for already marked attendance
                     $certificateToken = \Illuminate\Support\Str::random(32);
@@ -1037,8 +1084,8 @@ class ProgramApplicationController extends Controller
             DB::beginTransaction();
 
             // Lock the application row to prevent concurrent updates
-            $lockedApplication = ProgramApplication::where('student_id', $student->student_id)
-                ->where('program_id', $program->program_id)
+            $lockedApplication = ApplicationOpportunity::where('student_id', $student->student_id)
+                ->where('opportunity_id', $opportunity->opportunity_id)
                 ->lockForUpdate()
                 ->first();
 
@@ -1051,9 +1098,9 @@ class ProgramApplicationController extends Controller
                 return response()->json($responseData);
             }
 
-            // Generate certificate token if program is completed and generate_certificates is enabled
+            // Generate certificate token if opportunity is completed and generate_certificates is enabled
             $certificateToken = null;
-            if ($program->program_status === 'completed' && $program->generate_certificates) {
+            if ($opportunity->opportunity_status === 'completed' && $opportunity->generate_certificates) {
                 $certificateToken = \Illuminate\Support\Str::random(32);
             }
 
@@ -1067,7 +1114,7 @@ class ProgramApplicationController extends Controller
 
             DB::commit();
 
-            $responseData['message'] = 'Attendance marked successfully! Welcome to the program.';
+            $responseData['message'] = 'Attendance marked successfully! Welcome to the opportunity.';
             $responseData['application']['status'] = 'attend';
             $responseData['application']['marked_at'] = $lockedApplication->fresh()->updated_at;
 
@@ -1089,31 +1136,37 @@ class ProgramApplicationController extends Controller
     }
 
     /**
-     * Admin: Get all applications with accepted or attend status for a program
+     * Admin: Get all applications with accepted or attend status for an opportunity
      */
-    public function getProgramAttendance(Request $request, Program $program)
+    public function getOpportunityAttendance(Request $request, $opportunityId)
     {
         $user = $request->user();
 
         // Check if user is admin
         if (!$user || $user->role->value !== UserRole::ADMIN->value) {
-            return response()->json(['message' => 'Only admins can view program attendance'], 403);
+            return response()->json(['message' => 'Only admins can view opportunity attendance'], 403);
+        }
+
+        $opportunity = Opportunity::find($opportunityId);
+        if (!$opportunity) {
+            return response()->json(['message' => 'Opportunity not found'], 404);
         }
 
         // Get applications with accepted or attend status
-        $applications = ProgramApplication::with(['student.user', 'student.applicant', 'student.approvedApplication.scholarship'])
-            ->where('program_id', $program->program_id)
+        $applications = ApplicationOpportunity::with(['student.user', 'student.applicant', 'student.approvedApplication.scholarship'])
+            ->where('opportunity_id', $opportunityId)
             ->whereIn('application_status', ['accepted', 'attend'])
             ->whereHas('student')
             ->get();
 
         return response()->json([
-            'program' => [
-                'program_id' => $program->program_id,
-                'title' => $program->title,
-                'program_status' => $program->program_status,
-                'date' => $program->date,
-                'location' => $program->location,
+            'opportunity' => [
+                'opportunity_id' => $opportunity->opportunity_id,
+                'title' => $opportunity->title,
+                'opportunity_status' => $opportunity->opportunity_status,
+                'date' => $opportunity->date,
+                'location' => $opportunity->location,
+                'volunteer_role' => $opportunity->volunteer_role,
             ],
             'applications' => $applications->map(function ($application) {
                 return [
@@ -1139,7 +1192,7 @@ class ProgramApplicationController extends Controller
     /**
      * Admin: Update application status (accepted/attend) for multiple applications
      */
-    public function updateApplicationStatus(Request $request, Program $program)
+    public function updateApplicationStatus(Request $request, $opportunityId)
     {
         $user = $request->user();
 
@@ -1151,18 +1204,23 @@ class ProgramApplicationController extends Controller
         $data = $request->validate([
             'applications' => ['required', 'array', 'min:1'],
             'applications.*.application_id' => ['required', 'string', function ($attribute, $value, $fail) {
-                // Handle both formatted IDs (prog_0000038) and raw IDs (38)
+                // Handle both formatted IDs (opp_0000038) and raw IDs (38)
                 $numericId = $value;
-                if (preg_match('/^prog_(\d+)$/', $value, $matches)) {
+                if (preg_match('/^opp_(\d+)$/', $value, $matches)) {
                     $numericId = $matches[1];
                 }
 
-                if (!ProgramApplication::where('application_program_id', $numericId)->exists()) {
+                if (!ApplicationOpportunity::where('application_opportunity_id', $numericId)->exists()) {
                     $fail('The selected ' . $attribute . ' is invalid.');
                 }
             }],
             'applications.*.status' => ['required', 'string', 'in:accepted,attend'],
         ]);
+
+        $opportunity = Opportunity::find($opportunityId);
+        if (!$opportunity) {
+            return response()->json(['message' => 'Opportunity not found'], 404);
+        }
 
         try {
             DB::beginTransaction();
@@ -1173,19 +1231,19 @@ class ProgramApplicationController extends Controller
             foreach ($data['applications'] as $appData) {
                 // Extract numeric ID from formatted ID if needed
                 $numericId = $appData['application_id'];
-                if (preg_match('/^prog_(\d+)$/', $appData['application_id'], $matches)) {
+                if (preg_match('/^opp_(\d+)$/', $appData['application_id'], $matches)) {
                     $numericId = $matches[1];
                 }
 
-                $application = ProgramApplication::with(['student.user', 'student.applicant'])
-                    ->where('application_program_id', $numericId)
-                    ->where('program_id', $program->program_id)
+                $application = ApplicationOpportunity::with(['student.user', 'student.applicant'])
+                    ->where('application_opportunity_id', $numericId)
+                    ->where('opportunity_id', $opportunityId)
                     ->first();
 
                 if (!$application) {
                     $errors[] = [
                         'application_id' => $appData['application_id'],
-                        'error' => 'Application not found for this program'
+                        'error' => 'Application not found for this opportunity'
                     ];
                     continue;
                 }
@@ -1204,8 +1262,8 @@ class ProgramApplicationController extends Controller
 
                 // Generate certificate token if status is being set to 'attend'
                 if ($appData['status'] === 'attend') {
-                    // Check if program is completed and certificate generation is enabled
-                    if ($program->program_status === 'completed' && $program->generate_certificates) {
+                    // Check if opportunity is completed and certificate generation is enabled
+                    if ($opportunity->opportunity_status === 'completed' && $opportunity->generate_certificates) {
                         // Only generate token if one doesn't already exist
                         if (!$application->certificate_token) {
                             $updateData['certificate_token'] = \Illuminate\Support\Str::random(32);
@@ -1256,7 +1314,7 @@ class ProgramApplicationController extends Controller
      * Admin: Generate certificate tokens for existing attendance records
      * This method can be used to fix existing records that should have certificate tokens
      */
-    public function generateMissingCertificateTokens(Request $request, Program $program)
+    public function generateMissingCertificateTokens(Request $request, $opportunityId)
     {
         $user = $request->user();
 
@@ -1265,18 +1323,23 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Only admins can generate certificate tokens'], 403);
         }
 
-        // Check if program is completed and certificate generation is enabled
-        if ($program->program_status !== 'completed') {
-            return response()->json(['message' => 'Program must be completed to generate certificates'], 400);
+        $opportunity = Opportunity::find($opportunityId);
+        if (!$opportunity) {
+            return response()->json(['message' => 'Opportunity not found'], 404);
         }
 
-        if (!$program->generate_certificates) {
-            return response()->json(['message' => 'Certificate generation is disabled for this program'], 400);
+        // Check if opportunity is completed and certificate generation is enabled
+        if ($opportunity->opportunity_status !== 'completed') {
+            return response()->json(['message' => 'Opportunity must be completed to generate certificates'], 400);
+        }
+
+        if (!$opportunity->generate_certificates) {
+            return response()->json(['message' => 'Certificate generation is disabled for this opportunity'], 400);
         }
 
         try {
             // Find all attendance records without certificate tokens
-            $applications = ProgramApplication::where('program_id', $program->program_id)
+            $applications = ApplicationOpportunity::where('opportunity_id', $opportunityId)
                 ->where('application_status', 'attend')
                 ->whereNull('certificate_token')
                 ->get();
@@ -1299,8 +1362,8 @@ class ProgramApplicationController extends Controller
 
             return response()->json([
                 'message' => 'Certificate tokens generated successfully',
-                'program_id' => $program->program_id,
-                'program_title' => $program->title,
+                'opportunity_id' => $opportunityId,
+                'opportunity_title' => $opportunity->title,
                 'updated_count' => $updatedCount,
                 'updated_applications' => $updatedApplications
             ]);
@@ -1314,12 +1377,12 @@ class ProgramApplicationController extends Controller
 
     /**
      * Public: Get certificate details by token (no authentication required)
-     * Only accessible when program status is "completed"
+     * Only accessible when opportunity status is "completed"
      */
     public function getCertificate(Request $request, $token)
     {
         // Find application by certificate token
-        $application = ProgramApplication::with(['student.user', 'student.applicant', 'program'])
+        $application = ApplicationOpportunity::with(['student.user', 'student.applicant', 'opportunity'])
             ->where('certificate_token', $token)
             ->first();
 
@@ -1327,19 +1390,19 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Invalid certificate token'], 404);
         }
 
-        // CRITICAL: Only allow access when program status is "completed"
-        if ($application->program->program_status !== 'completed') {
+        // CRITICAL: Only allow access when opportunity status is "completed"
+        if ($application->opportunity->opportunity_status !== 'completed') {
             return response()->json([
                 'message' => 'Certificate not yet available',
-                'reason' => 'Program is not completed yet',
-                'program_status' => $application->program->program_status,
-                'available_when' => 'Program status becomes "completed"'
+                'reason' => 'Opportunity is not completed yet',
+                'opportunity_status' => $application->opportunity->opportunity_status,
+                'available_when' => 'Opportunity status becomes "completed"'
             ], 403);
         }
 
         // Check if certificates are enabled
-        if (!$application->program->generate_certificates) {
-            return response()->json(['message' => 'Certificate generation is disabled for this program'], 400);
+        if (!$application->opportunity->generate_certificates) {
+            return response()->json(['message' => 'Certificate generation is disabled for this opportunity'], 400);
         }
 
         // Check if application status is attend
@@ -1351,14 +1414,16 @@ class ProgramApplicationController extends Controller
             'certificate' => [
                 'application_id' => $application->formatted_id,
                 'student_name' => $application->student->applicant?->ar_name ?? $application->student->applicant?->en_name ?? 'N/A',
-                'program_title' => $application->program->title,
-                'program_date' => $application->program->date,
+                'opportunity_title' => $application->opportunity->title,
+                'opportunity_date' => $application->opportunity->date,
                 'attendance_date' => $application->updated_at,
-                'program_location' => $application->program->location,
-                'program_country' => $application->program->country,
+                'opportunity_location' => $application->opportunity->location,
+                'opportunity_country' => $application->opportunity->country,
+                'volunteer_role' => $application->opportunity->volunteer_role,
+                'volunteering_hours' => $application->opportunity->volunteering_hours,
                 'certificate_token' => $application->certificate_token,
                 'issued_at' => now(),
-                'program_status' => $application->program->program_status,
+                'opportunity_status' => $application->opportunity->opportunity_status,
             ]
         ]);
     }
