@@ -16,6 +16,36 @@ class ApplicationOpportunityController extends Controller
 {
 
     /**
+     * Normalize an application identifier into a loaded ApplicationOpportunity model.
+     */
+    private function resolveApplication($applicationId)
+    {
+        // Collection → first model
+        if ($applicationId instanceof \Illuminate\Support\Collection) {
+            $applicationId = $applicationId->first();
+        }
+
+        // Model instance → return with relations
+        if ($applicationId instanceof ApplicationOpportunity) {
+            return ApplicationOpportunity::with(['student.user', 'student.applicant', 'opportunity'])
+                ->find($applicationId->application_opportunity_id);
+        }
+
+        // Formatted ID like opp_0000008
+        if (is_string($applicationId) && preg_match('/^opp_(\d+)$/', $applicationId, $m)) {
+            $applicationId = (int) $m[1];
+        }
+
+        // Fallback: numeric id
+        if (is_numeric($applicationId)) {
+            return ApplicationOpportunity::with(['student.user', 'student.applicant', 'opportunity'])
+                ->find((int) $applicationId);
+        }
+
+        return null;
+    }
+
+    /**
      * Admin: Get students available for invitation
      */
     public function getStudentsForInvitation(Request $request)
@@ -191,7 +221,27 @@ class ApplicationOpportunityController extends Controller
             return response()->json(['message' => 'Only students can accept invitations'], 403);
         }
 
-        $application = ApplicationOpportunity::with(['student.user', 'opportunity'])->find($applicationId);
+        // Normalize ID: accept collection, model instance, and formatted IDs like opp_0000008
+        if ($applicationId instanceof \Illuminate\Support\Collection) {
+            $first = $applicationId->first();
+            $applicationId = $first?->application_opportunity_id;
+        } elseif ($applicationId instanceof ApplicationOpportunity) {
+            $applicationId = $applicationId->application_opportunity_id;
+        } elseif (is_string($applicationId) && preg_match('/^opp_(\\d+)$/', $applicationId, $m)) {
+            $applicationId = $m[1];
+        }
+
+        // Normalize ID: accept collection, model instance, and formatted IDs like opp_0000008
+        if ($applicationId instanceof \Illuminate\Support\Collection) {
+            $first = $applicationId->first();
+            $applicationId = $first?->application_opportunity_id;
+        } elseif ($applicationId instanceof ApplicationOpportunity) {
+            $applicationId = $applicationId->application_opportunity_id;
+        } elseif (is_string($applicationId) && preg_match('/^opp_(\\d+)$/', $applicationId, $m)) {
+            $applicationId = $m[1];
+        }
+
+        $application = $this->resolveApplication($applicationId);
 
         if (!$application) {
             return response()->json(['message' => 'Application not found'], 404);
@@ -258,7 +308,14 @@ class ApplicationOpportunityController extends Controller
             'excuse_file' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:5120'],
         ]);
 
-        $application = ApplicationOpportunity::with(['student.user', 'opportunity'])->find($applicationId);
+        // Normalize ID: accept model instance and formatted IDs like opp_0000008
+        if ($applicationId instanceof ApplicationOpportunity) {
+            $applicationId = $applicationId->application_opportunity_id;
+        } elseif (is_string($applicationId) && preg_match('/^opp_(\\d+)$/', $applicationId, $m)) {
+            $applicationId = $m[1];
+        }
+
+        $application = $this->resolveApplication($applicationId);
 
         if (!$application) {
             return response()->json(['message' => 'Application not found'], 404);
@@ -330,7 +387,7 @@ class ApplicationOpportunityController extends Controller
             return response()->json(['message' => 'Only admins can approve excuses'], 403);
         }
 
-        $application = ApplicationOpportunity::with(['student.user', 'opportunity'])->find($applicationId);
+        $application = $this->resolveApplication($applicationId);
         if (!$application) {
             return response()->json(['message' => 'Application not found'], 404);
         }
@@ -379,7 +436,7 @@ class ApplicationOpportunityController extends Controller
             return response()->json(['message' => 'Only admins can reject excuses'], 403);
         }
 
-        $application = ApplicationOpportunity::with(['student.user', 'opportunity'])->find($applicationId);
+        $application = $this->resolveApplication($applicationId);
         if (!$application) {
             return response()->json(['message' => 'Application not found'], 404);
         }
@@ -433,7 +490,7 @@ class ApplicationOpportunityController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        $application = ApplicationOpportunity::with(['student.user', 'opportunity'])->find($applicationId);
+        $application = $this->resolveApplication($applicationId);
 
         if (!$application) {
             return response()->json(['message' => 'Application not found'], 404);
@@ -631,14 +688,21 @@ class ApplicationOpportunityController extends Controller
             return response()->json(['message' => 'Only admins can view excuse details'], 403);
         }
 
+        // Normalize ID: support model instance and formatted IDs like opp_0000008
+        if ($applicationId instanceof ApplicationOpportunity) {
+            $applicationId = $applicationId->application_opportunity_id;
+        } elseif (is_string($applicationId) && preg_match('/^opp_(\\d+)$/', $applicationId, $m)) {
+            $applicationId = $m[1];
+        }
+
         $application = ApplicationOpportunity::with(['student.user', 'student.applicant', 'opportunity'])
             ->find($applicationId);
         if (!$application) {
             return response()->json(['message' => 'Application not found'], 404);
         }
 
-        // Check if application has excuse
-        if ($application->application_status !== 'excuse') {
+        // Check if application has or had an excuse (pending/approved/rejected)
+        if (!in_array($application->application_status, ['excuse', 'approved_excuse', 'rejected_excuse'])) {
             return response()->json(['message' => 'Application does not have an excuse'], 400);
         }
 
@@ -652,6 +716,7 @@ class ApplicationOpportunityController extends Controller
                 'ar_name' => $application->student->applicant->ar_name,
                 'status' => $application->application_status,
                 'opportunity_title' => $application->opportunity->title,
+                'program_title' => $application->opportunity->title,
                 'submitted_at' => $application->updated_at
             ]
         ]);

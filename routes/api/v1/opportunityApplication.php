@@ -23,13 +23,10 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::post('admin/opportunities/{opportunityId}/invite', [ApplicationOpportunityController::class, 'inviteMultipleStudents'])
         ->whereNumber('opportunityId');
 
-    // Excuse management
-    Route::get('admin/opportunities/applications/{applicationId}/excuse', [ApplicationOpportunityController::class, 'getExcuseDetails'])
-        ->whereNumber('applicationId');
-    Route::patch('admin/opportunities/applications/{applicationId}/approve-excuse', [ApplicationOpportunityController::class, 'approveExcuse'])
-        ->whereNumber('applicationId');
-    Route::patch('admin/opportunities/applications/{applicationId}/reject-excuse', [ApplicationOpportunityController::class, 'rejectExcuse'])
-        ->whereNumber('applicationId');
+    // Excuse management (accepts numeric or formatted IDs like opp_0000001)
+    Route::get('admin/opportunities/applications/{applicationId}/excuse', [ApplicationOpportunityController::class, 'getExcuseDetails']);
+    Route::patch('admin/opportunities/applications/{applicationId}/approve-excuse', [ApplicationOpportunityController::class, 'approveExcuse']);
+    Route::patch('admin/opportunities/applications/{applicationId}/reject-excuse', [ApplicationOpportunityController::class, 'rejectExcuse']);
 
     // Application management (accepts numeric or formatted IDs like opp_0000001)
     Route::delete('admin/opportunities/applications/{applicationId}', [ApplicationOpportunityController::class, 'deleteApplication']);
