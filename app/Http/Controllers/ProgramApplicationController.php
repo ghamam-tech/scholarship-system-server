@@ -16,6 +16,29 @@ class ProgramApplicationController extends Controller
 {
 
     /**
+     * Normalize a program identifier into a numeric ID.
+     */
+    private function normalizeProgramId($programId)
+    {
+        // Collection → first model → ID
+        if ($programId instanceof \Illuminate\Support\Collection) {
+            $first = $programId->first();
+            if ($first instanceof Program) {
+                return $first->program_id;
+            }
+            return $first;
+        }
+
+        // Model instance → ID
+        if ($programId instanceof Program) {
+            return $programId->program_id;
+        }
+
+        // Already numeric
+        return $programId;
+    }
+
+    /**
      * Admin: Get students available for invitation
      */
     public function getStudentsForInvitation(Request $request)

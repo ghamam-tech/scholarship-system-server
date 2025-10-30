@@ -30,25 +30,26 @@ class ApplicationOpportunity extends Model
     {
         parent::boot();
 
-        // No need to generate ID - let auto-increment handle it
-
-        // Automatically generate certificate token when status becomes 'attend'
+        // Automatically manage certificate token based on status and opportunity completion
         static::updating(function ($applicationOpportunity) {
-            if (
-                $applicationOpportunity->isDirty('application_status') &&
-                $applicationOpportunity->application_status === 'attend' &&
-                !$applicationOpportunity->certificate_token
-            ) {
+            // Load the opportunity relationship to check conditions
+            $opportunity = $applicationOpportunity->opportunity;
 
-                // Load the opportunity relationship to check conditions
-                $opportunity = $applicationOpportunity->opportunity;
+            // Check if we should have a certificate token
+            $shouldHaveToken = $applicationOpportunity->application_status === 'attend' 
+                && $opportunity 
+                && $opportunity->opportunity_status === 'completed' 
+                && $opportunity->generate_certificates;
 
-                if (
-                    $opportunity &&
-                    $opportunity->opportunity_status === 'completed' &&
-                    $opportunity->generate_certificates
-                ) {
+            if ($shouldHaveToken) {
+                // Generate token if we should have one and don't
+                if (!$applicationOpportunity->certificate_token) {
                     $applicationOpportunity->certificate_token = Str::random(32);
+                }
+            } else {
+                // Remove token if we shouldn't have one but do
+                if ($applicationOpportunity->certificate_token) {
+                    $applicationOpportunity->certificate_token = null;
                 }
             }
         });

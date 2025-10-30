@@ -46,6 +46,29 @@ class ApplicationOpportunityController extends Controller
     }
 
     /**
+     * Normalize an opportunity identifier into a numeric ID.
+     */
+    private function normalizeOpportunityId($opportunityId)
+    {
+        // Collection → first model → ID
+        if ($opportunityId instanceof \Illuminate\Support\Collection) {
+            $first = $opportunityId->first();
+            if ($first instanceof Opportunity) {
+                return $first->opportunity_id;
+            }
+            return $first;
+        }
+
+        // Model instance → ID
+        if ($opportunityId instanceof Opportunity) {
+            return $opportunityId->opportunity_id;
+        }
+
+        // Already numeric
+        return $opportunityId;
+    }
+
+    /**
      * Admin: Get students available for invitation
      */
     public function getStudentsForInvitation(Request $request)
@@ -108,22 +131,8 @@ class ApplicationOpportunityController extends Controller
             ], 422);
         }
 
-        // Robust fetch by primary key; guard against accidental collection returns
-        // Normalize route param in case implicit binding passed a Model instance
-        if ($opportunityId instanceof Opportunity) {
-            $opportunityId = $opportunityId->opportunity_id;
-        }
-
-        // Debug logging: verify route param, environment, and DB connection details
-        Log::info('Inviting students to opportunity', [
-            'opportunity_param' => is_object($opportunityId) ? get_class($opportunityId) : $opportunityId,
-            'app_env' => config('app.env'),
-            'default_db_connection' => config('database.default'),
-            'db_name' => DB::connection()->getDatabaseName(),
-            'db_host' => config('database.connections.' . config('database.default') . '.host'),
-            'db_database' => config('database.connections.' . config('database.default') . '.database'),
-            'student_ids' => $data['student_ids'] ?? [],
-        ]);
+        // Normalize opportunity ID
+        $opportunityId = $this->normalizeOpportunityId($opportunityId);
 
         $opportunity = Opportunity::where('opportunity_id', $opportunityId)->first();
         Log::info('Opportunity lookup result', [
@@ -570,14 +579,12 @@ class ApplicationOpportunityController extends Controller
             return response()->json(['message' => 'Only admins can view opportunity applications'], 403);
         }
 
-        // Normalize route param in case implicit binding passed a Model instance
-        if ($opportunityId instanceof Opportunity) {
-            $opportunityId = $opportunityId->opportunity_id;
-        }
+        // Normalize opportunity ID
+        $opportunityId = $this->normalizeOpportunityId($opportunityId);
 
         // Debug logging: verify environment and DB for this read path
         Log::info('GetOpportunityApplications request', [
-            'opportunity_param' => is_object($opportunityId) ? get_class($opportunityId) : $opportunityId,
+            'opportunity_param' => $opportunityId,
             'app_env' => config('app.env'),
             'default_db_connection' => config('database.default'),
             'db_name' => DB::connection()->getDatabaseName(),
@@ -850,6 +857,9 @@ class ApplicationOpportunityController extends Controller
             return response()->json(['message' => 'Authentication required'], 401);
         }
 
+        // Normalize opportunity ID
+        $opportunityId = $this->normalizeOpportunityId($opportunityId);
+
         $opportunity = Opportunity::find($opportunityId);
         if (!$opportunity) {
             return response()->json(['message' => 'Opportunity not found'], 404);
@@ -919,10 +929,8 @@ class ApplicationOpportunityController extends Controller
             return response()->json(['message' => 'Only students can view their opportunity applications'], 403);
         }
 
-        // Normalize route param in case binding passed a model
-        if ($opportunityId instanceof Opportunity) {
-            $opportunityId = $opportunityId->opportunity_id;
-        }
+        // Normalize opportunity ID
+        $opportunityId = $this->normalizeOpportunityId($opportunityId);
 
         // Find the student record for this user
         $student = Student::where('user_id', $user->user_id)->first();
@@ -1265,6 +1273,9 @@ class ApplicationOpportunityController extends Controller
             return response()->json(['message' => 'Only admins can view opportunity attendance'], 403);
         }
 
+        // Normalize opportunity ID
+        $opportunityId = $this->normalizeOpportunityId($opportunityId);
+
         $opportunity = Opportunity::find($opportunityId);
         if (!$opportunity) {
             return response()->json(['message' => 'Opportunity not found'], 404);
@@ -1334,6 +1345,9 @@ class ApplicationOpportunityController extends Controller
             }],
             'applications.*.status' => ['required', 'string', 'in:accepted,attend'],
         ]);
+
+        // Normalize opportunity ID
+        $opportunityId = $this->normalizeOpportunityId($opportunityId);
 
         $opportunity = Opportunity::find($opportunityId);
         if (!$opportunity) {
@@ -1440,6 +1454,9 @@ class ApplicationOpportunityController extends Controller
         if (!$user || $user->role->value !== UserRole::ADMIN->value) {
             return response()->json(['message' => 'Only admins can generate certificate tokens'], 403);
         }
+
+        // Normalize opportunity ID
+        $opportunityId = $this->normalizeOpportunityId($opportunityId);
 
         $opportunity = Opportunity::find($opportunityId);
         if (!$opportunity) {
