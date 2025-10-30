@@ -48,4 +48,14 @@ class Student extends Model
     {
         return $this->belongsTo(University::class, 'university_id', 'university_id');
     }
+
+    public function requests()
+    {
+        return $this->hasMany(Request::class, 'student_id', 'student_id');
+    }
+
+    public function tickets()
+    {
+        return $this->hasMany(Ticket::class, 'student_id', 'student_id');
+    }
 }
