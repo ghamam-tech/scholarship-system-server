@@ -69,4 +69,5 @@ Route::middleware(['auth:sanctum', 'role:student'])->group(function () {
 });
 
 // Public certificate route (no authentication required)
-Route::get('certificates/{token}', [ProgramApplicationController::class, 'getCertificate']);
+// Certificate access for programs
+Route::get('program-certificates/{token}', [ProgramApplicationController::class, 'getCertificate']);

@@ -36,9 +36,9 @@ class ApplicationOpportunity extends Model
             $opportunity = $applicationOpportunity->opportunity;
 
             // Check if we should have a certificate token
-            $shouldHaveToken = $applicationOpportunity->application_status === 'attend' 
-                && $opportunity 
-                && $opportunity->opportunity_status === 'completed' 
+            $shouldHaveToken = $applicationOpportunity->application_status === 'attend'
+                && $opportunity
+                && $opportunity->opportunity_status === 'completed'
                 && $opportunity->generate_certificates;
 
             if ($shouldHaveToken) {

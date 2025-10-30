@@ -74,5 +74,5 @@ Route::middleware(['auth:sanctum', 'role:student'])->group(function () {
 });
 
 // Public routes (no authentication required)
-// Certificate access
-Route::get('certificates/{token}', [ApplicationOpportunityController::class, 'getCertificate']);
+// Certificate access for opportunities
+Route::get('opportunity-certificates/{token}', [ApplicationOpportunityController::class, 'getCertificate']);
