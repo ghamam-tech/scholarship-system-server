@@ -78,7 +78,29 @@ class ApplicationOpportunityController extends Controller
             ], 422);
         }
 
-        $opportunity = Opportunity::find($opportunityId);
+        // Robust fetch by primary key; guard against accidental collection returns
+        // Normalize route param in case implicit binding passed a Model instance
+        if ($opportunityId instanceof Opportunity) {
+            $opportunityId = $opportunityId->opportunity_id;
+        }
+
+        // Debug logging: verify route param, environment, and DB connection details
+        Log::info('Inviting students to opportunity', [
+            'opportunity_param' => is_object($opportunityId) ? get_class($opportunityId) : $opportunityId,
+            'app_env' => config('app.env'),
+            'default_db_connection' => config('database.default'),
+            'db_name' => DB::connection()->getDatabaseName(),
+            'db_host' => config('database.connections.' . config('database.default') . '.host'),
+            'db_database' => config('database.connections.' . config('database.default') . '.database'),
+            'student_ids' => $data['student_ids'] ?? [],
+        ]);
+
+        $opportunity = Opportunity::where('opportunity_id', $opportunityId)->first();
+        Log::info('Opportunity lookup result', [
+            'found' => (bool) $opportunity,
+            'resolved_id' => $opportunity?->opportunity_id,
+            'title' => $opportunity?->title,
+        ]);
         if (!$opportunity) {
             return response()->json(['message' => 'Opportunity not found'], 404);
         }
@@ -92,7 +114,7 @@ class ApplicationOpportunityController extends Controller
             foreach ($data['student_ids'] as $studentId) {
                 // Check if invitation already exists
                 $existingApplication = ApplicationOpportunity::where('student_id', $studentId)
-                    ->where('opportunity_id', $opportunityId)
+                    ->where('opportunity_id', $opportunity->opportunity_id)
                     ->first();
 
                 if ($existingApplication) {
@@ -102,7 +124,7 @@ class ApplicationOpportunityController extends Controller
 
                 $application = ApplicationOpportunity::create([
                     'student_id' => $studentId,
-                    'opportunity_id' => $opportunityId,
+                    'opportunity_id' => $opportunity->opportunity_id,
                     'application_status' => 'invite'
                 ]);
 
@@ -113,7 +135,7 @@ class ApplicationOpportunityController extends Controller
 
             // Get all existing applications for this opportunity
             $allExistingApplications = ApplicationOpportunity::with(['student.user', 'student.applicant'])
-                ->where('opportunity_id', $opportunityId)
+                ->where('opportunity_id', $opportunity->opportunity_id)
                 ->get();
 
             return response()->json([
@@ -309,7 +331,6 @@ class ApplicationOpportunityController extends Controller
         }
 
         $application = ApplicationOpportunity::with(['student.user', 'opportunity'])->find($applicationId);
-
         if (!$application) {
             return response()->json(['message' => 'Application not found'], 404);
         }
@@ -359,7 +380,6 @@ class ApplicationOpportunityController extends Controller
         }
 
         $application = ApplicationOpportunity::with(['student.user', 'opportunity'])->find($applicationId);
-
         if (!$application) {
             return response()->json(['message' => 'Application not found'], 404);
         }
@@ -493,6 +513,21 @@ class ApplicationOpportunityController extends Controller
             return response()->json(['message' => 'Only admins can view opportunity applications'], 403);
         }
 
+        // Normalize route param in case implicit binding passed a Model instance
+        if ($opportunityId instanceof Opportunity) {
+            $opportunityId = $opportunityId->opportunity_id;
+        }
+
+        // Debug logging: verify environment and DB for this read path
+        Log::info('GetOpportunityApplications request', [
+            'opportunity_param' => is_object($opportunityId) ? get_class($opportunityId) : $opportunityId,
+            'app_env' => config('app.env'),
+            'default_db_connection' => config('database.default'),
+            'db_name' => DB::connection()->getDatabaseName(),
+            'db_host' => config('database.connections.' . config('database.default') . '.host'),
+            'db_database' => config('database.connections.' . config('database.default') . '.database'),
+        ]);
+
         $opportunity = Opportunity::find($opportunityId);
         if (!$opportunity) {
             return response()->json(['message' => 'Opportunity not found'], 404);
@@ -503,10 +538,13 @@ class ApplicationOpportunityController extends Controller
             ->whereHas('student') // Only get applications with valid students
             ->get();
 
+        // Guard against any accidental collection shadowing and fetch title explicitly
+        $opportunityTitle = Opportunity::where('opportunity_id', $opportunityId)->value('title');
+
         return response()->json([
             'opportunity' => [
-                'opportunity_id' => $opportunity->opportunity_id,
-                'title' => $opportunity->title
+                'opportunity_id' => $opportunityId,
+                'title' => $opportunityTitle
             ],
             'applications' => $applications->map(function ($application) {
                 return [
@@ -534,10 +572,24 @@ class ApplicationOpportunityController extends Controller
             return response()->json(['message' => 'Only admins can delete applications'], 403);
         }
 
+        // Accept both numeric IDs and formatted IDs like "opp_0000038"
+        Log::info('DeleteOpportunityApplication request', [
+            'raw_id' => $applicationId,
+        ]);
+        $numericId = $applicationId;
+        if ($applicationId instanceof ApplicationOpportunity) {
+            $numericId = $applicationId->application_opportunity_id;
+        } elseif (is_string($applicationId) && preg_match('/^opp_(\d+)$/', $applicationId, $matches)) {
+            $numericId = $matches[1];
+        }
+        Log::info('Parsed application id', ['numeric_id' => $numericId]);
+
         $application = ApplicationOpportunity::with(['student.user', 'student.applicant', 'opportunity'])
-            ->find($applicationId);
+            ->where('application_opportunity_id', $numericId)
+            ->first();
 
         if (!$application) {
+            Log::info('DeleteOpportunityApplication not found', ['numeric_id' => $numericId]);
             return response()->json(['message' => 'Application not found'], 404);
         }
 
@@ -552,7 +604,7 @@ class ApplicationOpportunityController extends Controller
             return response()->json([
                 'message' => 'Application deleted successfully',
                 'deleted_application' => [
-                    'application_opportunity_id' => $applicationId,
+                    'application_opportunity_id' => $application->formatted_id,
                     'student_id' => $application->student_id,
                     'ar_name' => $application->student->applicant->ar_name ?? 'N/A',
                     'email' => $application->student->user->email,
@@ -581,7 +633,6 @@ class ApplicationOpportunityController extends Controller
 
         $application = ApplicationOpportunity::with(['student.user', 'student.applicant', 'opportunity'])
             ->find($applicationId);
-
         if (!$application) {
             return response()->json(['message' => 'Application not found'], 404);
         }
@@ -669,6 +720,11 @@ class ApplicationOpportunityController extends Controller
             ->get();
 
         $opportunities = $applications->map(function ($application) {
+            // Check if opportunity relationship exists and is a model (not collection)
+            if (!$application->opportunity || is_a($application->opportunity, 'Illuminate\Database\Eloquent\Collection')) {
+                return null; // Skip this application if opportunity is null or collection
+            }
+
             // Get enrollment count for this opportunity
             $enrollmentCount = ApplicationOpportunity::where('opportunity_id', $application->opportunity->opportunity_id)
                 ->where('application_status', 'accepted')
@@ -703,6 +759,9 @@ class ApplicationOpportunityController extends Controller
             ];
         });
 
+        // Filter out null values
+        $opportunities = $opportunities->filter()->values();
+
         return response()->json([
             'student' => [
                 'student_id' => $student->student_id,
@@ -732,12 +791,12 @@ class ApplicationOpportunityController extends Controller
         }
 
         // Get enrollment count for this opportunity
-        $enrollmentCount = ApplicationOpportunity::where('opportunity_id', $opportunityId)
+        $enrollmentCount = ApplicationOpportunity::where('opportunity_id', $opportunity->opportunity_id)
             ->where('application_status', 'accepted')
             ->count();
 
         // Get total applications for this opportunity
-        $totalApplications = ApplicationOpportunity::where('opportunity_id', $opportunityId)->count();
+        $totalApplications = ApplicationOpportunity::where('opportunity_id', $opportunity->opportunity_id)->count();
 
         // Get opportunity coordinator details
         $coordinator = [
@@ -793,6 +852,11 @@ class ApplicationOpportunityController extends Controller
         // Check if user is student
         if (!$user || $user->role->value !== UserRole::STUDENT->value) {
             return response()->json(['message' => 'Only students can view their opportunity applications'], 403);
+        }
+
+        // Normalize route param in case binding passed a model
+        if ($opportunityId instanceof Opportunity) {
+            $opportunityId = $opportunityId->opportunity_id;
         }
 
         // Find the student record for this user
@@ -861,6 +925,7 @@ class ApplicationOpportunityController extends Controller
             ]
         ]);
     }
+
 
     /**
      * Student: QR Code attendance with token (requires student authentication)
@@ -943,19 +1008,7 @@ class ApplicationOpportunityController extends Controller
 
             $responseData = [
                 'message' => 'Attendance marked successfully',
-                'application' => [
-                    'application_opportunity_id' => $application->formatted_id,
-                    'application_status' => $application->application_status,
-                    'certificate_token' => $application->certificate_token,
-                    'comment' => $application->comment,
-                    'excuse_reason' => $application->excuse_reason,
-                    'excuse_file' => $application->excuse_file,
-                    'attendece_mark' => $application->attendece_mark,
-                    'student_id' => $application->student_id,
-                    'opportunity_id' => $application->opportunity_id,
-                    'created_at' => $application->created_at,
-                    'updated_at' => $application->updated_at
-                ]->load(['student.user', 'opportunity']),
+                'application' => $application->load(['student.user', 'opportunity']),
                 'student' => [
                     'student_id' => $student->student_id,
                     'name' => $student->en_name ?? $student->ar_name,
@@ -1154,7 +1207,7 @@ class ApplicationOpportunityController extends Controller
 
         // Get applications with accepted or attend status
         $applications = ApplicationOpportunity::with(['student.user', 'student.applicant', 'student.approvedApplication.scholarship'])
-            ->where('opportunity_id', $opportunityId)
+            ->where('opportunity_id', $opportunity->opportunity_id)
             ->whereIn('application_status', ['accepted', 'attend'])
             ->whereHas('student')
             ->get();
@@ -1237,7 +1290,7 @@ class ApplicationOpportunityController extends Controller
 
                 $application = ApplicationOpportunity::with(['student.user', 'student.applicant'])
                     ->where('application_opportunity_id', $numericId)
-                    ->where('opportunity_id', $opportunityId)
+                    ->where('opportunity_id', $opportunity->opportunity_id)
                     ->first();
 
                 if (!$application) {

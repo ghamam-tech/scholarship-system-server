@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::middleware(['auth:sanctum'])->group(function () {
+// Admin-only routes - require authentication and admin role
+Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     // Opportunity CRUD operations
     Route::get('admin/opportunities', [OpportunityController::class, 'index']);
     Route::post('admin/opportunities', [OpportunityController::class, 'store']);
@@ -29,4 +30,3 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
 // Public routes (no authentication required)
 Route::get('opportunities/qr/{token}', [OpportunityController::class, 'qrScan']);
-

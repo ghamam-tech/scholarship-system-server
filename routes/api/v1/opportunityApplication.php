@@ -12,57 +12,68 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+// Admin-only routes - require authentication and admin role
+Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
+    // Get students for invitation
+    Route::get('admin/opportunities/students/for-invitation', [ApplicationOpportunityController::class, 'getStudentsForInvitation']);
+    // View opportunity applications
+    Route::get('admin/opportunities/{opportunityId}/applications', [ApplicationOpportunityController::class, 'getOpportunityApplications'])
+        ->whereNumber('opportunityId');
+    // Invite students to opportunity (single or multiple)
+    Route::post('admin/opportunities/{opportunityId}/invite', [ApplicationOpportunityController::class, 'inviteMultipleStudents'])
+        ->whereNumber('opportunityId');
+
+    // Excuse management
+    Route::get('admin/opportunities/applications/{applicationId}/excuse', [ApplicationOpportunityController::class, 'getExcuseDetails'])
+        ->whereNumber('applicationId');
+    Route::patch('admin/opportunities/applications/{applicationId}/approve-excuse', [ApplicationOpportunityController::class, 'approveExcuse'])
+        ->whereNumber('applicationId');
+    Route::patch('admin/opportunities/applications/{applicationId}/reject-excuse', [ApplicationOpportunityController::class, 'rejectExcuse'])
+        ->whereNumber('applicationId');
+
+    // Application management (accepts numeric or formatted IDs like opp_0000001)
+    Route::delete('admin/opportunities/applications/{applicationId}', [ApplicationOpportunityController::class, 'deleteApplication']);
+
+    // Get opportunity attendance (accepted/attend applications)
+    Route::get('admin/opportunities/{opportunityId}/attendance', [ApplicationOpportunityController::class, 'getOpportunityAttendance'])
+        ->whereNumber('opportunityId');
+
+    // Update application statuses
+    Route::patch('admin/opportunities/{opportunityId}/applications/status', [ApplicationOpportunityController::class, 'updateApplicationStatus'])
+        ->whereNumber('opportunityId');
+
+
+    // Generate certificate tokens
+    Route::post('admin/opportunities/{opportunityId}/generate-certificates', [ApplicationOpportunityController::class, 'generateMissingCertificateTokens'])
+        ->whereNumber('opportunityId');
+});
+
+// Student-only routes - require authentication and student role
+Route::middleware(['auth:sanctum', 'role:student'])->group(function () {
+    // Application management
+    Route::patch('student/opportunities/applications/{applicationId}/accept', [ApplicationOpportunityController::class, 'acceptInvitation']);
+    Route::post('student/opportunities/applications/{applicationId}/reject', [ApplicationOpportunityController::class, 'rejectInvitation']);
+
+    // QR attendance
+    Route::patch('student/opportunities/applications/{applicationId}/attendance', [ApplicationOpportunityController::class, 'qrAttendance']);
+
+    // View my applications
+    Route::get('student/opportunities/applications', [ApplicationOpportunityController::class, 'getMyApplications']);
+    // View my opportunities
+    Route::get('student/opportunities', [ApplicationOpportunityController::class, 'getOpportunitiesForStudent']);
+    // Get my opportunity application by Opportunity ID (student only)
+    Route::get('student/opportunities/{opportunityId}/my-application', [ApplicationOpportunityController::class, 'getMyOpportunityApplication']);
+});
+
+// Get opportunity by ID (accessible to all authenticated users)
 Route::middleware(['auth:sanctum'])->group(function () {
-    // Admin routes
-    Route::prefix('admin')->group(function () {
-        // Get students for invitation
-        Route::get('admin/opportunities/students/for-invitation', [ApplicationOpportunityController::class, 'getStudentsForInvitation']);
-        // View opportunity applications
-        Route::get('admin/opportunities/{opportunityId}/applications', [ApplicationOpportunityController::class, 'getOpportunityApplications']);
-        // Invite students to opportunity (single or multiple)
-        Route::post('admin/opportunities/{opportunityId}/invite', [ApplicationOpportunityController::class, 'inviteMultipleStudents']);
+    Route::get('opportunities/{opportunityId}', [ApplicationOpportunityController::class, 'getOpportunityById']);
+});
 
-        // Excuse management
-        Route::get('admin/opportunities/applications/{applicationId}/excuse', [ApplicationOpportunityController::class, 'getExcuseDetails']);
-        Route::patch('admin/opportunities/applications/{applicationId}/approve-excuse', [ApplicationOpportunityController::class, 'approveExcuse']);
-        Route::patch('admin/opportunities/applications/{applicationId}/reject-excuse', [ApplicationOpportunityController::class, 'rejectExcuse']);
-
-        // Application management
-        Route::delete('admin/opportunities/applications/{applicationId}', [ApplicationOpportunityController::class, 'deleteApplication']);
-
-        // Get opportunity attendance (accepted/attend applications)
-        Route::get('admin/opportunities/{opportunityId}/attendance', [ApplicationOpportunityController::class, 'getOpportunityAttendance']);
-
-        // Update application statuses
-        Route::patch('admin/opportunities/{opportunityId}/applications/status', [ApplicationOpportunityController::class, 'updateApplicationStatus']);
-
-        // Generate certificate tokens
-        Route::post('admin/opportunities/{opportunityId}/generate-certificates', [ApplicationOpportunityController::class, 'generateMissingCertificateTokens']);
-    });
-
-    // Student routes
-    Route::prefix('student')->group(function () {
-        // Application management
-        Route::patch('student/opportunities/applications/{applicationId}/accept', [ApplicationOpportunityController::class, 'acceptInvitation']);
-        Route::post('student/opportunities/applications/{applicationId}/reject', [ApplicationOpportunityController::class, 'rejectInvitation']);
-
-        // QR attendance
-        Route::patch('student/opportunities/applications/{applicationId}/attendance', [ApplicationOpportunityController::class, 'qrAttendance']);
-
-        // View my applications
-        Route::get('student/opportunities/applications', [ApplicationOpportunityController::class, 'getMyApplications']);
-        // View my opportunities
-        Route::get('student/opportunities', [ApplicationOpportunityController::class, 'getOpportunitiesForStudent']);
-        // Get my opportunity application by Opportunity ID (student only)
-        Route::get('student/opportunities/{opportunityId}/my-application', [ApplicationOpportunityController::class, 'getMyOpportunityApplication']);
-    });
-
-    // Get opportunity by ID (accessible to all authenticated users)
-    Route::get('admin/opportunities/{opportunityId}', [ApplicationOpportunityController::class, 'getOpportunityById']);
-
-    // QR attendance routes
-    Route::post('admin/opportunities/qr/{token}/attendance', [ApplicationOpportunityController::class, 'qrAttendanceWithToken']);
-    Route::post('admin/opportunities/qr/{token}/mark-attendance', [ApplicationOpportunityController::class, 'markAttendanceViaQR']);
+// Student QR Code attendance routes (requires student authentication)
+Route::middleware(['auth:sanctum', 'role:student'])->group(function () {
+    Route::post('opportunities/qr/{token}/attendance', [ApplicationOpportunityController::class, 'qrAttendanceWithToken']);
+    Route::post('opportunities/qr/{token}/mark-attendance', [ApplicationOpportunityController::class, 'markAttendanceViaQR']);
 });
 
 // Public routes (no authentication required)

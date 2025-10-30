@@ -119,10 +119,18 @@ class OpportunityController extends Controller
             return response()->json(['message' => 'Only admins can view opportunity details'], 403);
         }
 
-        $opportunity = Opportunity::with(['opportunityApplications'])->find($id);
+        $opportunity = Opportunity::with(['opportunityApplications'])
+            ->withCount('opportunityApplications')
+            ->find($id);
 
         if (!$opportunity) {
             return response()->json(['message' => 'Opportunity not found'], 404);
+        }
+
+        // Backfill QR token if missing (QR attendance is always enabled)
+        if (!$opportunity->qr_url) {
+            $opportunity->qr_url = $this->generateQRUrl();
+            $opportunity->save();
         }
 
         return response()->json([
