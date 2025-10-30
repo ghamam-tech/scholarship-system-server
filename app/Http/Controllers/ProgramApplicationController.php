@@ -155,7 +155,7 @@ class ProgramApplicationController extends Controller
     /**
      * Student: Accept invitation
      */
-    public function acceptInvitation(Request $request, ProgramApplication $application)
+    public function acceptInvitation(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -164,8 +164,18 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Only students can accept invitations'], 403);
         }
 
-        // Load the relationships
-        $application->load(['student.user', 'program']);
+        // Normalize ID: supports model instance and prog_0000001 format
+        if ($applicationId instanceof ProgramApplication) {
+            $applicationId = $applicationId->application_program_id;
+        } elseif (is_string($applicationId) && preg_match('/^prog_(\d+)$/', $applicationId, $m)) {
+            $applicationId = $m[1];
+        }
+
+        // Load the application with relationships
+        $application = ProgramApplication::with(['student.user', 'program'])->find($applicationId);
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
 
         // Check if the student owns this application
         if ($application->student->user_id !== $user->user_id) {
@@ -206,7 +216,7 @@ class ProgramApplicationController extends Controller
     /**
      * Student: Reject invitation with excuse
      */
-    public function rejectInvitation(Request $request, ProgramApplication $application)
+    public function rejectInvitation(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -227,8 +237,18 @@ class ProgramApplicationController extends Controller
             'excuse_file' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:5120'],
         ]);
 
-        // Load the relationships
-        $application->load(['student.user', 'program']);
+        // Normalize ID: supports model instance and prog_0000001 format
+        if ($applicationId instanceof ProgramApplication) {
+            $applicationId = $applicationId->application_program_id;
+        } elseif (is_string($applicationId) && preg_match('/^prog_(\d+)$/', $applicationId, $m)) {
+            $applicationId = $m[1];
+        }
+
+        // Load the application with relationships
+        $application = ProgramApplication::with(['student.user', 'program'])->find($applicationId);
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
 
         // Check if the student owns this application
         if ($application->student->user_id !== $user->user_id) {
@@ -286,7 +306,7 @@ class ProgramApplicationController extends Controller
     /**
      * Admin: Approve student excuse
      */
-    public function approveExcuse(Request $request, ProgramApplication $application)
+    public function approveExcuse(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -295,8 +315,18 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Only admins can approve excuses'], 403);
         }
 
-        // Load the relationships
-        $application->load(['student.user', 'program']);
+        // Normalize ID: supports model instance and prog_0000001 format
+        if ($applicationId instanceof ProgramApplication) {
+            $applicationId = $applicationId->application_program_id;
+        } elseif (is_string($applicationId) && preg_match('/^prog_(\d+)$/', $applicationId, $m)) {
+            $applicationId = $m[1];
+        }
+
+        // Load the application with relationships
+        $application = ProgramApplication::with(['student.user', 'program'])->find($applicationId);
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
 
         // Check if application is in excuse status
         if ($application->application_status !== 'excuse') {
@@ -332,7 +362,7 @@ class ProgramApplicationController extends Controller
     /**
      * Admin: Reject student excuse
      */
-    public function rejectExcuse(Request $request, ProgramApplication $application)
+    public function rejectExcuse(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -341,8 +371,18 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Only admins can reject excuses'], 403);
         }
 
-        // Load the relationships
-        $application->load(['student.user', 'program']);
+        // Normalize ID: supports model instance and prog_0000001 format
+        if ($applicationId instanceof ProgramApplication) {
+            $applicationId = $applicationId->application_program_id;
+        } elseif (is_string($applicationId) && preg_match('/^prog_(\d+)$/', $applicationId, $m)) {
+            $applicationId = $m[1];
+        }
+
+        // Load the application with relationships
+        $application = ProgramApplication::with(['student.user', 'program'])->find($applicationId);
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
 
         // Check if application is in excuse status
         if ($application->application_status !== 'excuse') {
@@ -378,7 +418,7 @@ class ProgramApplicationController extends Controller
     /**
      * Student: QR Code attendance
      */
-    public function qrAttendance(Request $request, ProgramApplication $application)
+    public function qrAttendance(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -392,8 +432,18 @@ class ProgramApplicationController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        // Load the relationships
-        $application->load(['student.user', 'program']);
+        // Normalize ID: supports model instance and prog_0000001 format
+        if ($applicationId instanceof ProgramApplication) {
+            $applicationId = $applicationId->application_program_id;
+        } elseif (is_string($applicationId) && preg_match('/^prog_(\d+)$/', $applicationId, $m)) {
+            $applicationId = $m[1];
+        }
+
+        // Load the application with relationships
+        $application = ProgramApplication::with(['student.user', 'program'])->find($applicationId);
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
 
         // Check if the student owns this application
         if ($application->student->user_id !== $user->user_id) {
@@ -495,7 +545,7 @@ class ProgramApplicationController extends Controller
     /**
      * Admin: Delete program application
      */
-    public function deleteApplication(Request $request, ProgramApplication $application)
+    public function deleteApplication(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -504,8 +554,17 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Only admins can delete applications'], 403);
         }
 
-        // Load the relationships
-        $application->load(['student.user', 'student.applicant', 'program']);
+        // Normalize ID: supports model instance and prog_0000001 format
+        if ($applicationId instanceof ProgramApplication) {
+            $applicationId = $applicationId->application_program_id;
+        } elseif (is_string($applicationId) && preg_match('/^prog_(\d+)$/', $applicationId, $m)) {
+            $applicationId = $m[1];
+        }
+
+        $application = ProgramApplication::with(['student.user', 'student.applicant', 'program'])->find($applicationId);
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
 
         try {
             // Delete excuse file if exists
@@ -536,7 +595,7 @@ class ProgramApplicationController extends Controller
     /**
      * Admin: Get excuse details for an application
      */
-    public function getExcuseDetails(Request $request, ProgramApplication $application)
+    public function getExcuseDetails(Request $request, $applicationId)
     {
         $user = $request->user();
 
@@ -545,11 +604,20 @@ class ProgramApplicationController extends Controller
             return response()->json(['message' => 'Only admins can view excuse details'], 403);
         }
 
-        // Load the relationships
-        $application->load(['student.user', 'student.applicant', 'program']);
+        // Normalize ID: supports model instance and prog_0000001 format
+        if ($applicationId instanceof ProgramApplication) {
+            $applicationId = $applicationId->application_program_id;
+        } elseif (is_string($applicationId) && preg_match('/^prog_(\d+)$/', $applicationId, $m)) {
+            $applicationId = $m[1];
+        }
 
-        // Check if application has excuse
-        if ($application->application_status !== 'excuse') {
+        $application = ProgramApplication::with(['student.user', 'student.applicant', 'program'])->find($applicationId);
+        if (!$application) {
+            return response()->json(['message' => 'Application not found'], 404);
+        }
+
+        // Check if application has or had an excuse (pending/approved/rejected)
+        if (!in_array($application->application_status, ['excuse', 'approved_excuse', 'rejected_excuse'])) {
             return response()->json(['message' => 'Application does not have an excuse'], 400);
         }
 
@@ -909,7 +977,7 @@ class ProgramApplicationController extends Controller
                     'program_id' => $application->program_id,
                     'created_at' => $application->created_at,
                     'updated_at' => $application->updated_at
-                ]->load(['student.user', 'program']),
+                ],
                 'student' => [
                     'student_id' => $student->student_id,
                     'name' => $student->en_name ?? $student->ar_name,
