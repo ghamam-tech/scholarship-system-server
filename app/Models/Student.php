@@ -54,4 +54,9 @@ class Student extends Model
         return $this->hasMany(Semester::class, 'user_id', 'user_id')
             ->orderBy('semester_number');
     }
+
+    public function requests()
+    {
+        return $this->hasMany(Request::class, 'student_id', 'student_id');
+    }
 }

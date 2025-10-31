@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Models\ApplicantApplication;
+use App\Models\Student;
 use App\Models\UserStatus;
 use App\Enums\ApplicationStatus;
 use App\Enums\UserRole;
@@ -20,41 +21,61 @@ class AppointmentController extends Controller
     {
         $user = $request->user();
 
-        // Check if user is an applicant
-        if (!$user || $user->role !== UserRole::APPLICANT) {
-            return response()->json(['message' => 'Only applicants can view appointments'], 403);
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        $applicant = $user->applicant;
-        if (!$applicant) {
-            return response()->json(['message' => 'Applicant profile not found'], 404);
+        $roleValue = $user->role instanceof UserRole ? $user->role->value : $user->role;
+        $allowedRoles = [UserRole::APPLICANT->value, UserRole::STUDENT->value];
+
+        if (!in_array($roleValue, $allowedRoles, true)) {
+            return response()->json(['message' => 'Only applicants or students can view appointments'], 403);
         }
 
-        // Check if applicant has an application with first_approval status
-        $application = $applicant->applications()
-            ->whereHas('currentStatus', function ($query) {
-                $query->where('status_name', ApplicationStatus::FIRST_APPROVAL->value);
-            })
-            ->first();
+        $userTimezone = $user->timezone ?? $this->detectUserTimezone($request);
 
-        if (!$application) {
-            return response()->json([
-                'message' => 'You must have an application with first approval status to view appointments'
-            ], 403);
+        $meta = [
+            'user_id' => $user->user_id,
+            'role' => $roleValue,
+        ];
+
+        if ($roleValue === UserRole::APPLICANT->value) {
+            $applicant = $user->applicant;
+            if (!$applicant) {
+                return response()->json(['message' => 'Applicant profile not found'], 404);
+            }
+
+            $application = $applicant->applications()
+                ->whereHas('currentStatus', function ($query) {
+                    $query->where('status_name', ApplicationStatus::FIRST_APPROVAL->value);
+                })
+                ->first();
+
+            if (!$application) {
+                return response()->json([
+                    'message' => 'You must have an application with first approval status to view appointments'
+                ], 403);
+            }
+
+            $meta['applicant_id'] = $applicant->applicant_id;
+            $meta['application_id'] = $application->application_id;
+            $meta['application_status'] = $application->currentStatus->status_name ?? null;
+        } else {
+            $student = Student::where('user_id', $user->user_id)->first();
+            if (!$student) {
+                return response()->json(['message' => 'Student profile not found'], 404);
+            }
+
+            $meta['student_id'] = $student->student_id;
         }
 
-        // Get applicant's timezone (automatic detection)
-        $applicantTimezone = $user->timezone ?? $this->detectUserTimezone($request);
-
-        // Get available appointments (not booked, not canceled, and in the future)
         $appointments = Appointment::available()
             ->upcoming()
             ->orderBy('starts_at_utc')
             ->get()
-            ->map(function ($appointment) use ($applicantTimezone) {
-                // Convert UTC times to applicant's local timezone
-                $startsAtLocal = $appointment->starts_at_utc->setTimezone($applicantTimezone);
-                $endsAtLocal = $appointment->ends_at_utc->setTimezone($applicantTimezone);
+            ->map(function ($appointment) use ($userTimezone) {
+                $startsAtLocal = $appointment->starts_at_utc->setTimezone($userTimezone);
+                $endsAtLocal = $appointment->ends_at_utc->setTimezone($userTimezone);
 
                 return [
                     'appointment_id' => $appointment->appointment_id,
@@ -66,29 +87,24 @@ class AppointmentController extends Controller
                     'ends_at_display' => $endsAtLocal->format('M j, Y g:i A'),
                     'duration_min' => $appointment->duration_min,
                     'owner_timezone' => $appointment->owner_timezone,
-                    'applicant_timezone' => $applicantTimezone,
+                    'applicant_timezone' => $userTimezone,
                     'meeting_url' => $appointment->meeting_url,
                     'status' => $appointment->status,
                 ];
             });
 
-        // Check if applicant already has a booked appointment
         $hasBookedAppointment = Appointment::where('user_id', $user->user_id)
             ->where('status', 'booked')
             ->where('starts_at_utc', '>', now())
             ->exists();
 
+        $meta['total'] = $appointments->count();
+        $meta['has_booked_appointment'] = $hasBookedAppointment;
+        $meta['booking_rule'] = 'Each user can only have one appointment at a time';
+
         return response()->json([
             'data' => $appointments,
-            'meta' => [
-                'total' => $appointments->count(),
-                'user_id' => $user->user_id,
-                'applicant_id' => $applicant->applicant_id,
-                'application_id' => $application->application_id,
-                'application_status' => $application->currentStatus->status_name,
-                'has_booked_appointment' => $hasBookedAppointment,
-                'booking_rule' => 'Each applicant can only have one appointment at a time',
-            ]
+            'meta' => $meta,
         ]);
     }
 
@@ -99,41 +115,53 @@ class AppointmentController extends Controller
     {
         $user = $request->user();
 
-        // Check if user is an applicant
-        if (!$user || $user->role !== UserRole::APPLICANT) {
-            return response()->json(['message' => 'Only applicants can book appointments'], 403);
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        $applicant = $user->applicant;
-        if (!$applicant) {
-            return response()->json(['message' => 'Applicant profile not found'], 404);
+        $roleValue = $user->role instanceof UserRole ? $user->role->value : $user->role;
+        $allowedRoles = [UserRole::APPLICANT->value, UserRole::STUDENT->value];
+
+        if (!in_array($roleValue, $allowedRoles, true)) {
+            return response()->json(['message' => 'Only applicants or students can book appointments'], 403);
         }
 
-        // Require user-level FIRST_APPROVAL
-        $hasFirstApproval = UserStatus::where('user_id', $user->user_id)
-            ->where('status_name', ApplicationStatus::FIRST_APPROVAL->value)
-            ->exists();
+        $isApplicant = $roleValue === UserRole::APPLICANT->value;
 
-        if (!$hasFirstApproval) {
-            return response()->json([
-                'message' => 'You must have first approval status to book appointments'
-            ], 403);
+        if ($isApplicant) {
+            $applicant = $user->applicant;
+            if (!$applicant) {
+                return response()->json(['message' => 'Applicant profile not found'], 404);
+            }
+
+            $hasFirstApproval = UserStatus::where('user_id', $user->user_id)
+                ->where('status_name', ApplicationStatus::FIRST_APPROVAL->value)
+                ->exists();
+
+            if (!$hasFirstApproval) {
+                return response()->json([
+                    'message' => 'You must have first approval status to book appointments'
+                ], 403);
+            }
+        } else {
+            $student = Student::where('user_id', $user->user_id)->first();
+            if (!$student) {
+                return response()->json(['message' => 'Student profile not found'], 404);
+            }
         }
 
-        // Check if applicant already has ANY booked appointment (across all applications)
         $existingAppointment = Appointment::where('user_id', $user->user_id)
             ->where('status', 'booked')
             ->where('starts_at_utc', '>', now())
             ->first();
 
         if ($existingAppointment) {
-            // Get applicant's timezone for display
-            $applicantTimezone = $user->timezone ?? $this->detectUserTimezone($request);
-            $startsAtLocal = $existingAppointment->starts_at_utc->setTimezone($applicantTimezone);
-            $endsAtLocal = $existingAppointment->ends_at_utc->setTimezone($applicantTimezone);
+            $viewerTimezone = $user->timezone ?? $this->detectUserTimezone($request);
+            $startsAtLocal = $existingAppointment->starts_at_utc->setTimezone($viewerTimezone);
+            $endsAtLocal = $existingAppointment->ends_at_utc->setTimezone($viewerTimezone);
 
             return response()->json([
-                'message' => 'You already have a booked appointment. Each applicant can only have one appointment at a time.',
+                'message' => 'You already have a booked appointment. Each user can only have one appointment at a time.',
                 'existing_appointment' => [
                     'appointment_id' => $existingAppointment->appointment_id,
                     'starts_at_utc' => $existingAppointment->starts_at_utc,
@@ -148,10 +176,8 @@ class AppointmentController extends Controller
             ], 422);
         }
 
-        // Find the appointment
         $appointment = Appointment::findOrFail($appointmentId);
 
-        // Check if appointment can be booked
         if (!$appointment->canBeBooked()) {
             return response()->json([
                 'message' => 'This appointment is not available for booking'
@@ -161,20 +187,24 @@ class AppointmentController extends Controller
         try {
             DB::beginTransaction();
 
-            // Book the appointment
             $appointment->update([
                 'status' => 'booked',
                 'user_id' => $user->user_id,
                 'booked_at' => now(),
             ]);
 
-            // Update application status to meeting_scheduled
-            UserStatus::create([
-                'user_id' => $user->user_id,
-                'status_name' => ApplicationStatus::MEETING_SCHEDULED->value,
-                'date' => now(),
-                'comment' => 'Appointment booked for meeting',
-            ]);
+            $applicationStatusUpdated = null;
+
+            if ($isApplicant) {
+                UserStatus::create([
+                    'user_id' => $user->user_id,
+                    'status_name' => ApplicationStatus::MEETING_SCHEDULED->value,
+                    'date' => now(),
+                    'comment' => 'Appointment booked for meeting',
+                ]);
+
+                $applicationStatusUpdated = ApplicationStatus::MEETING_SCHEDULED->value;
+            }
 
             DB::commit();
 
@@ -190,7 +220,7 @@ class AppointmentController extends Controller
                     'status' => $appointment->status,
                     'booked_at' => $appointment->booked_at,
                 ],
-                'application_status_updated' => ApplicationStatus::MEETING_SCHEDULED->value,
+                'application_status_updated' => $applicationStatusUpdated,
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -987,4 +1017,3 @@ class AppointmentController extends Controller
         }
     }
 }
-

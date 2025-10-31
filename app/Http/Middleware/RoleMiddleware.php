@@ -13,7 +13,7 @@ class RoleMiddleware
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */
-    public function handle(Request $request, Closure $next, string $role): Response
+    public function handle(Request $request, Closure $next, string ...$roles): Response
     {
         if (!$request->user()) {
             return response()->json(['message' => 'Unauthenticated'], 401);
@@ -22,7 +22,16 @@ class RoleMiddleware
         $userRole = $request->user()->role;
         $userRoleValue = is_object($userRole) ? $userRole->value : $userRole;
 
-        if ($userRoleValue !== $role) {
+        $allowedRoles = collect($roles)
+            ->flatMap(fn ($value) => preg_split('/[,\|]/', $value))
+            ->filter()
+            ->map(fn ($value) => trim($value))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if (!in_array($userRoleValue, $allowedRoles, true)) {
             return response()->json(['message' => 'Forbidden. Insufficient permissions.'], 403);
         }
 
