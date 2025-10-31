@@ -76,4 +76,9 @@ class User extends Authenticatable
         return $this->hasOne(UserStatus::class, 'user_id', 'user_id')
             ->latestOfMany(['date', 'created_at']);
     }
+
+    public function ticketMessages()
+    {
+        return $this->hasMany(TicketMessage::class, 'user_id', 'user_id');
+    }
 }
