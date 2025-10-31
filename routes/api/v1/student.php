@@ -2,12 +2,18 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\StudentController;
+use App\Http\Controllers\SemesterController;
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::middleware(['role:student'])->group(function () {
         Route::get('/student/status-summary', [StudentController::class, 'statusSummary']);
         Route::get('/student/profile', [StudentController::class, 'getProfile']);
         Route::put('/student/profile', [StudentController::class, 'updateProfile']);
+        Route::post('/student/studying-info', [StudentController::class, 'completeStudyingInfo']);
+        Route::get('/student/semesters', [SemesterController::class, 'index']);
+        Route::post('/student/semesters', [SemesterController::class, 'store']);
+        Route::put('/student/semesters/{semester}', [SemesterController::class, 'update']);
+        Route::delete('/student/semesters/{semester}', [SemesterController::class, 'destroy']);
     });
 
     Route::middleware(['role:admin'])->group(function () {

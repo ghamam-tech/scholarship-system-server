@@ -57,6 +57,12 @@ class User extends Authenticatable
         return $this->hasMany(Qualification::class, 'user_id', 'user_id');
     }
 
+    public function semesters()
+    {
+        return $this->hasMany(Semester::class, 'user_id', 'user_id')
+            ->orderBy('semester_number');
+    }
+
     public function statuses()
     {
         return $this->hasMany(UserStatus::class, 'user_id', 'user_id')

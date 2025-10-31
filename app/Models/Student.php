@@ -48,4 +48,10 @@ class Student extends Model
     {
         return $this->belongsTo(University::class, 'university_id', 'university_id');
     }
+
+    public function semesters()
+    {
+        return $this->hasMany(Semester::class, 'user_id', 'user_id')
+            ->orderBy('semester_number');
+    }
 }
