@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
             ApprovedApplicantApplicationSeeder::class, // Create approved applications
             StudentSeeder::class,           // Create students from approved applicants
             ProgramSeeder::class,           // Create programs
+            OpportunitySeeder::class,       // Create opportunities (cleans and seeds)
         ]);
     }
 }

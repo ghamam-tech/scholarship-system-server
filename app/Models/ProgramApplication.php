@@ -29,23 +29,26 @@ class ProgramApplication extends Model
     {
         parent::boot();
 
-        // Automatically generate certificate token when status becomes 'attend'
+        // Automatically manage certificate token based on status and program completion
         static::updating(function ($programApplication) {
-            if (
-                $programApplication->isDirty('application_status') &&
-                $programApplication->application_status === 'attend' &&
-                !$programApplication->certificate_token
-            ) {
+            // Load the program relationship to check conditions
+            $program = $programApplication->program;
 
-                // Load the program relationship to check conditions
-                $program = $programApplication->program;
+            // Check if we should have a certificate token
+            $shouldHaveToken = $programApplication->application_status === 'attend' 
+                && $program 
+                && $program->program_status === 'completed' 
+                && $program->generate_certificates;
 
-                if (
-                    $program &&
-                    $program->program_status === 'completed' &&
-                    $program->generate_certificates
-                ) {
+            if ($shouldHaveToken) {
+                // Generate token if we should have one and don't
+                if (!$programApplication->certificate_token) {
                     $programApplication->certificate_token = Str::random(32);
+                }
+            } else {
+                // Remove token if we shouldn't have one but do
+                if ($programApplication->certificate_token) {
+                    $programApplication->certificate_token = null;
                 }
             }
         });
@@ -65,5 +68,13 @@ class ProgramApplication extends Model
     public function program()
     {
         return $this->belongsTo(Program::class, 'program_id', 'program_id');
+    }
+
+    /**
+     * Get the formatted application ID with prefix
+     */
+    public function getFormattedIdAttribute()
+    {
+        return 'prog_' . str_pad($this->application_program_id, 7, '0', STR_PAD_LEFT);
     }
 }
