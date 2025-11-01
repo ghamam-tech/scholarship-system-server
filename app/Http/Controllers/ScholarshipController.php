@@ -86,6 +86,96 @@ class ScholarshipController extends Controller
         ]);
     }
 
+    public function indexWithLocations(Request $request)
+    {
+        $user = $request->user();
+        $isAdmin = $user && $user->role === UserRole::ADMIN;
+        $now = now();
+
+        $query = Scholarship::with([
+            'sponsor',
+            'countries',
+            'universities.country',
+        ]);
+
+        $filtersApplied = [];
+
+        if (!$isAdmin) {
+            $query->where('is_active', true)
+                ->where('is_hided', false);
+
+            $filtersApplied = [
+                'is_active=true',
+                'is_hided=false',
+                'closing_date>' . $now->toIso8601String(),
+            ];
+        }
+
+        $scholarships = $query->orderBy('created_at', 'desc')->get();
+
+        $transformedScholarships = $scholarships->map(function (Scholarship $scholarship) use ($now) {
+            return [
+                'scholarship_id' => $scholarship->scholarship_id,
+                'scholarship_name' => $scholarship->scholarship_name,
+                'scholarship_type' => $scholarship->scholarship_type,
+                'allowed_program' => $scholarship->allowed_program,
+                'total_beneficiaries' => $scholarship->total_beneficiaries,
+                'opening_date' => $scholarship->opening_date,
+                'closing_date' => $scholarship->closing_date,
+                'description' => $scholarship->description,
+                'sponsor' => $scholarship->sponsor ? [
+                    'sponsor_id' => $scholarship->sponsor->sponsor_id,
+                    'name' => $scholarship->sponsor->name,
+                    'sponsor_type' => $scholarship->sponsor->sponsor_type,
+                    'contact_email' => $scholarship->sponsor->contact_email,
+                    'contact_phone' => $scholarship->sponsor->contact_phone,
+                    'website' => $scholarship->sponsor->website,
+                ] : null,
+                'countries' => $scholarship->countries
+                    ->map(function (Country $country) {
+                        return [
+                            'country_id' => $country->country_id,
+                            'country_name' => $country->country_name,
+                            'country_code' => $country->country_code,
+                            'is_active' => $country->is_active,
+                        ];
+                    })
+                    ->values()
+                    ->all(),
+                'universities' => $scholarship->universities
+                    ->map(function (University $university) {
+                        return [
+                            'university_id' => $university->university_id,
+                            'university_name' => $university->university_name,
+                            'country_id' => $university->country_id,
+                            'country_name' => optional($university->country)->country_name,
+                            'city' => $university->city,
+                            'is_active' => $university->is_active,
+                        ];
+                    })
+                    ->values()
+                    ->all(),
+                'status' => [
+                    'is_active' => $scholarship->is_active,
+                    'is_hided' => $scholarship->is_hided,
+                    'is_expired' => $scholarship->closing_date ? $scholarship->closing_date <= $now : false,
+                ],
+            ];
+        })->values();
+
+        return response()->json([
+            'data' => $transformedScholarships,
+            'meta' => [
+                'total' => $transformedScholarships->count(),
+                'user_role' => $user ? $user->role->value : 'guest',
+                'is_admin' => $isAdmin,
+                'user_id' => $user->user_id ?? null,
+                'filters_applied' => $filtersApplied,
+                'includes' => ['sponsor', 'countries', 'universities'],
+            ],
+        ]);
+    }
+
     public function show(Request $request, Scholarship $scholarship)
     {
         $user = $request->user();
