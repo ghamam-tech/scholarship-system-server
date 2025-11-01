@@ -16,6 +16,7 @@ use App\Http\Controllers\ScholarshipController;
 // Public routes - anyone can view active, non-hidden scholarships
 // These routes work for both authenticated and unauthenticated users
 Route::get('scholarships', [ScholarshipController::class, 'index']);
+Route::get('scholarships/with-locations', [ScholarshipController::class, 'indexWithLocations']);
 Route::get('scholarships/{scholarship}', [ScholarshipController::class, 'show']);
 
 // Helper route for frontend - get universities by countries
